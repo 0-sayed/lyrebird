@@ -1,0 +1,65 @@
+{
+  "monorepo": true,
+  "root": "apps/gateway",
+  "sourceRoot": "apps/gateway/src",
+  "compilerOptions": {
+    "webpack": true,
+    "tsConfigPath": "apps/gateway/tsconfig.app.json"
+  },
+  "projects": {
+    "analysis": {
+      "type": "application",
+      "root": "apps/analysis",
+      "entryFile": "main",
+      "sourceRoot": "apps/analysis/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/analysis/tsconfig.app.json"
+      }
+    },
+    "database": {
+      "type": "library",
+      "root": "libs/database",
+      "entryFile": "index",
+      "sourceRoot": "libs/database/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/database/tsconfig.lib.json"
+      }
+    },
+    "gateway": {
+      "type": "application",
+      "root": "apps/gateway",
+      "entryFile": "main",
+      "sourceRoot": "apps/gateway/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/gateway/tsconfig.app.json"
+      }
+    },
+    "ingestion": {
+      "type": "application",
+      "root": "apps/ingestion",
+      "entryFile": "main",
+      "sourceRoot": "apps/ingestion/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/ingestion/tsconfig.app.json"
+      }
+    },
+    "rabbitmq": {
+      "type": "library",
+      "root": "libs/rabbitmq",
+      "entryFile": "index",
+      "sourceRoot": "libs/rabbitmq/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/rabbitmq/tsconfig.lib.json"
+      }
+    },
+    "shared-types": {
+      "type": "library",
+      "root": "libs/shared-types",
+      "entryFile": "index",
+      "sourceRoot": "libs/shared-types/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/shared-types/tsconfig.lib.json"
+      }
+    }
+  }
+}
