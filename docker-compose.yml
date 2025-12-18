@@ -1,0 +1,77 @@
+services:
+  # PostgreSQL with TimescaleDB Extension
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    container_name: lyrebird-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DATABASE_USER}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+      POSTGRES_DB: ${DATABASE_NAME}
+      POSTGRES_INITDB_ARGS: '-A md5'
+    ports:
+      - '${DATABASE_PORT}:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lyrebird-network
+
+  # RabbitMQ Message Broker
+  rabbitmq:
+    image: rabbitmq:4.0-management-alpine
+    container_name: lyrebird-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST}
+    ports:
+      - '${RABBITMQ_PORT}:5672' # AMQP port
+      - '${RABBITMQ_MANAGEMENT_PORT}:15672' # Management UI
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ['CMD-SHELL', 'rabbitmq-diagnostics -q check_running']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lyrebird-network
+
+  # Redis Cache
+  redis:
+    image: redis:7.4-alpine
+    container_name: lyrebird-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    ports:
+      - '${REDIS_PORT}:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', '--raw', 'incr', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lyrebird-network
+
+# Named volumes for data persistence
+volumes:
+  postgres_data:
+    driver: local
+  rabbitmq_data:
+    driver: local
+  redis_data:
+    driver: local
+
+# Custom network for service communication
+networks:
+  lyrebird-network:
+    driver: bridge
