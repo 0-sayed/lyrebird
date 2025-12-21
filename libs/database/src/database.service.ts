@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { drizzle, NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { Pool } from 'pg';
+import * as path from 'path';
 import * as schema from './schema';
 
 @Injectable()
@@ -28,7 +29,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       // Create PostgreSQL pool
       this.pool = new Pool({
         host: this.configService.get('DATABASE_HOST'),
-        port: this.configService.get('DATABASE_PORT'),
+        port: parseInt(this.configService.get('DATABASE_PORT') || '5432', 10),
         user: this.configService.get('DATABASE_USER'),
         password: this.configService.get('DATABASE_PASSWORD'),
         database: this.configService.get('DATABASE_NAME'),
@@ -44,8 +45,9 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       // Initialize Drizzle ORM with schema
       this._db = drizzle(this.pool, { schema });
 
-      // Run migrations automatically on startup
-      await this.runMigrations();
+      // Note: Run migrations manually via 'pnpm db:migrate' to avoid race conditions
+      // when multiple services start simultaneously
+      // await this.runMigrations();
 
       this.logger.log('Database service initialized');
     } catch (error) {
@@ -70,11 +72,14 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   /**
    * Run all pending migrations
    */
-  private async runMigrations() {
+  async runMigrations() {
     try {
       this.logger.log('Running database migrations...');
       await migrate(this._db, {
-        migrationsFolder: './libs/database/migrations',
+        migrationsFolder: path.join(
+          __dirname,
+          '../../../libs/database/migrations',
+        ),
       });
       this.logger.log('Migrations completed successfully');
     } catch (error) {
