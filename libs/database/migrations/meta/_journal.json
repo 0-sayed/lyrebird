@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1766252753413,
+      "tag": "20251220174553_complete_excalibur",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1766252754000,
+      "tag": "20251220174554_timescaledb_setup",
+      "breakpoints": true
+    }
+  ]
+}
