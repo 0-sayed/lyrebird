@@ -169,23 +169,16 @@
           "name": "sentiment_data_job_id_jobs_id_fk",
           "tableFrom": "sentiment_data",
           "tableTo": "jobs",
-          "columnsFrom": [
-            "job_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["job_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
-        "sentiment_data_id_collected_at_pk": {
-          "name": "sentiment_data_id_collected_at_pk",
-          "columns": [
-            "id",
-            "collected_at"
-          ]
+        "sentiment_data_id_published_at_pk": {
+          "name": "sentiment_data_id_published_at_pk",
+          "columns": ["id", "published_at"]
         }
       },
       "uniqueConstraints": {},
