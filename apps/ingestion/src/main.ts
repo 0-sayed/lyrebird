@@ -1,6 +1,5 @@
 import { NestFactory } from '@nestjs/core';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
-import { ConfigService } from '@nestjs/config';
 import { IngestionModule } from './ingestion.module';
 import { Logger } from '@nestjs/common';
 import {
@@ -12,13 +11,8 @@ import {
 async function bootstrap() {
   const logger = new Logger('IngestionBootstrap');
 
-  // Create application context to access ConfigService
-  const appContext =
-    await NestFactory.createApplicationContext(IngestionModule);
-  const configService = appContext.get(ConfigService);
-
-  // Build RabbitMQ URL using shared utility
-  const rabbitmqUrl = buildRabbitMqUrl(configService);
+  // Build RabbitMQ URL using shared utility (reads from process.env)
+  const rabbitmqUrl = buildRabbitMqUrl();
   const queue = RABBITMQ_CONSTANTS.QUEUES.LYREBIRD_MAIN;
 
   logger.log(`Connecting to: ${getSanitizedRabbitMqUrl(rabbitmqUrl)}`);
