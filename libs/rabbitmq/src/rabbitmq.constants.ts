@@ -27,15 +27,42 @@ export const RABBITMQ_CONSTANTS = {
 } as const;
 
 /**
- * Build RabbitMQ URL from environment configuration
- * This ensures consistent URL construction across all services
+ * Build RabbitMQ URL from environment variables directly.
+ * Use this in bootstrap/main.ts before NestJS DI is available.
  */
-export function buildRabbitMqUrl(configService: ConfigService): string {
-  const host = configService.get<string>('RABBITMQ_HOST', 'localhost');
-  const port = configService.get<number>('RABBITMQ_PORT', 5672);
-  const user = configService.get<string>('RABBITMQ_USER', 'guest');
-  const password = configService.get<string>('RABBITMQ_PASSWORD', 'guest');
-  const vhost = configService.get<string>('RABBITMQ_VHOST', '/');
+export function buildRabbitMqUrl(): string;
+
+/**
+ * Build RabbitMQ URL using ConfigService.
+ * Use this inside NestJS DI context (services, modules).
+ */
+export function buildRabbitMqUrl(configService: ConfigService): string;
+
+/**
+ * Implementation: Build RabbitMQ URL from environment configuration.
+ * This ensures consistent URL construction across all services.
+ */
+export function buildRabbitMqUrl(configService?: ConfigService): string {
+  const host =
+    configService?.get<string>('RABBITMQ_HOST') ??
+    process.env.RABBITMQ_HOST ??
+    'localhost';
+  const port =
+    configService?.get<number>('RABBITMQ_PORT') ??
+    process.env.RABBITMQ_PORT ??
+    '5672';
+  const user =
+    configService?.get<string>('RABBITMQ_USER') ??
+    process.env.RABBITMQ_USER ??
+    'guest';
+  const password =
+    configService?.get<string>('RABBITMQ_PASSWORD') ??
+    process.env.RABBITMQ_PASSWORD ??
+    'guest';
+  const vhost =
+    configService?.get<string>('RABBITMQ_VHOST') ??
+    process.env.RABBITMQ_VHOST ??
+    '/';
 
   // Encode vhost if it's not the default '/'
   const encodedVhost = vhost === '/' ? '' : `/${encodeURIComponent(vhost)}`;
