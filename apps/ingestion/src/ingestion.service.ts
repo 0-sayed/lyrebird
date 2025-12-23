@@ -41,7 +41,10 @@ export class IngestionService {
 
       this.logger.log(`Raw data published for job: ${message.jobId}`);
     } catch (error) {
-      this.logger.error(`Failed to process job: ${message.jobId}`, error.stack);
+      this.logger.error(
+        `Failed to process job: ${message.jobId}`,
+        error instanceof Error ? error.stack : String(error),
+      );
       throw error;
     }
   }
