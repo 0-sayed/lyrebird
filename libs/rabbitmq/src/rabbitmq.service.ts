@@ -48,7 +48,7 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /**‹
+  /**
    * Close RabbitMQ connection on module shutdown
    */
   async onModuleDestroy() {
