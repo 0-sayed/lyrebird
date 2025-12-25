@@ -1,11 +1,12 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { JobsRepository } from '@app/database';
+import { JobsRepository, Job } from '@app/database';
 import { RabbitmqService } from '@app/rabbitmq';
 import {
   MESSAGE_PATTERNS,
   StartJobMessage,
   JobStatus,
 } from '@app/shared-types';
+import { CreateJobDto, JobResponseDto } from './dtos';
 
 @Injectable()
 export class GatewayService {
@@ -17,19 +18,24 @@ export class GatewayService {
   ) {}
 
   /**
-   * Start a new sentiment analysis job
+   * Create a new sentiment analysis job
    */
-  async startJob(prompt: string) {
+  async createJob(
+    createJobDto: CreateJobDto,
+    correlationId: string,
+  ): Promise<JobResponseDto> {
     try {
-      this.logger.log(`Starting job for prompt: ${prompt}`);
+      this.logger.log(
+        `[${correlationId}] Creating job for prompt: ${createJobDto.prompt}`,
+      );
 
       // 1. Create job in database
       const job = await this.jobsRepository.create({
-        prompt,
+        prompt: createJobDto.prompt,
         status: JobStatus.PENDING,
       });
 
-      this.logger.log(`Job created: ${job.id}`);
+      this.logger.log(`[${correlationId}] Job created: ${job.id}`);
 
       // 2. Publish message to start ingestion
       const message: StartJobMessage = {
@@ -40,18 +46,15 @@ export class GatewayService {
 
       this.rabbitmqService.emit(MESSAGE_PATTERNS.JOB_START, message);
 
-      this.logger.log(`Message published: ${MESSAGE_PATTERNS.JOB_START}`);
+      this.logger.log(
+        `[${correlationId}] Message published: ${MESSAGE_PATTERNS.JOB_START}`,
+      );
 
       // 3. Return job info to client
-      return {
-        jobId: job.id,
-        status: job.status,
-        prompt: job.prompt,
-        createdAt: job.createdAt,
-      };
+      return this.toJobResponseDto(job);
     } catch (error) {
       this.logger.error(
-        'Failed to start job',
+        `[${correlationId}] Failed to create job`,
         error instanceof Error ? error.stack : String(error),
       );
       throw error;
@@ -59,15 +62,33 @@ export class GatewayService {
   }
 
   /**
-   * Get job status
+   * Get job by ID
    */
-  async getJobStatus(jobId: string) {
+  async getJob(jobId: string): Promise<JobResponseDto> {
     const job = await this.jobsRepository.findById(jobId);
 
     if (!job) {
-      throw new NotFoundException(`Job not found: ${jobId}`);
+      throw new NotFoundException(`Job with ID ${jobId} not found`);
     }
 
-    return job;
+    return this.toJobResponseDto(job);
+  }
+
+  /**
+   * List all jobs
+   */
+  async listJobs(): Promise<JobResponseDto[]> {
+    const jobs = await this.jobsRepository.findAll();
+
+    return jobs.map((job) => this.toJobResponseDto(job));
+  }
+
+  private toJobResponseDto(job: Job): JobResponseDto {
+    return {
+      jobId: job.id,
+      status: job.status as JobStatus,
+      prompt: job.prompt,
+      createdAt: job.createdAt,
+    };
   }
 }

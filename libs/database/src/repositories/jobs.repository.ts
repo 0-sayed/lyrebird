@@ -41,4 +41,11 @@ export class JobsRepository {
       .returning();
     return job;
   }
+
+  /**
+   * Find all jobs
+   */
+  async findAll(): Promise<Job[]> {
+    return this.databaseService.db.select().from(jobs);
+  }
 }
