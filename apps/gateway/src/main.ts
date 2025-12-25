@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { GatewayModule } from './gateway.module';
 
@@ -36,7 +36,7 @@ async function bootstrap() {
   const port = process.env.GATEWAY_PORT || 3000;
   await app.listen(port);
 
-  console.log(
+  new Logger('Bootstrap').log(
     JSON.stringify({
       event: 'service_started',
       service: 'gateway',
@@ -54,6 +54,10 @@ async function bootstrap() {
 }
 
 bootstrap().catch((err) => {
-  console.error(err);
+  const logger = new Logger('Bootstrap');
+  logger.error(
+    'Failed to start application',
+    err instanceof Error ? err.stack : String(err),
+  );
   process.exit(1);
 });

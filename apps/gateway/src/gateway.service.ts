@@ -1,5 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { JobsRepository } from '@app/database';
+import { JobsRepository, Job } from '@app/database';
 import { RabbitmqService } from '@app/rabbitmq';
 import {
   MESSAGE_PATTERNS,
@@ -51,12 +51,7 @@ export class GatewayService {
       );
 
       // 3. Return job info to client
-      return {
-        jobId: job.id,
-        status: job.status,
-        prompt: job.prompt,
-        createdAt: job.createdAt,
-      };
+      return this.toJobResponseDto(job);
     } catch (error) {
       this.logger.error(
         `[${correlationId}] Failed to create job`,
@@ -76,12 +71,7 @@ export class GatewayService {
       throw new NotFoundException(`Job with ID ${jobId} not found`);
     }
 
-    return {
-      jobId: job.id,
-      status: job.status,
-      prompt: job.prompt,
-      createdAt: job.createdAt,
-    };
+    return this.toJobResponseDto(job);
   }
 
   /**
@@ -90,11 +80,15 @@ export class GatewayService {
   async listJobs(): Promise<JobResponseDto[]> {
     const jobs = await this.jobsRepository.findAll();
 
-    return jobs.map((job) => ({
+    return jobs.map((job) => this.toJobResponseDto(job));
+  }
+
+  private toJobResponseDto(job: Job): JobResponseDto {
+    return {
       jobId: job.id,
-      status: job.status,
+      status: job.status as JobStatus,
       prompt: job.prompt,
       createdAt: job.createdAt,
-    }));
+    };
   }
 }
