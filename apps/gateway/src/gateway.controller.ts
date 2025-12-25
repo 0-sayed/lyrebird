@@ -48,6 +48,21 @@ export class GatewayController {
     return job;
   }
 
+  @Get()
+  @ApiOperation({ summary: 'List all jobs' })
+  @ApiResponse({
+    status: 200,
+    description: 'Jobs retrieved',
+    type: [JobResponseDto],
+  })
+  async listJobs(@Req() request: Request): Promise<JobResponseDto[]> {
+    const correlationId = request.correlationId ?? 'unknown';
+
+    this.logger.log(`[${correlationId}] Listing all jobs`);
+
+    return this.gatewayService.listJobs();
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get job status and results' })
   @ApiResponse({
@@ -65,20 +80,5 @@ export class GatewayController {
     this.logger.log(`[${correlationId}] Fetching job: ${id}`);
 
     return this.gatewayService.getJob(id);
-  }
-
-  @Get()
-  @ApiOperation({ summary: 'List all jobs' })
-  @ApiResponse({
-    status: 200,
-    description: 'Jobs retrieved',
-    type: [JobResponseDto],
-  })
-  async listJobs(@Req() request: Request): Promise<JobResponseDto[]> {
-    const correlationId = request.correlationId ?? 'unknown';
-
-    this.logger.log(`[${correlationId}] Listing all jobs`);
-
-    return this.gatewayService.listJobs();
   }
 }
