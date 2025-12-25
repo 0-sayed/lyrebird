@@ -14,38 +14,103 @@ export class IngestionService {
 
   /**
    * Process incoming job (Walking Skeleton - hardcoded data)
+   *
+   * In the real implementation (Phase 3), this will:
+   * 1. Call Reddit API to search for posts
+   * 2. Extract relevant text content
+   * 3. Normalize and clean data
+   * 4. Publish each data point for analysis
    */
-  async processJob(message: StartJobMessage): Promise<void> {
+  async processJob(
+    message: StartJobMessage,
+    correlationId: string,
+  ): Promise<void> {
+    const startTime = Date.now();
+
     try {
-      this.logger.log(`Processing job: ${message.jobId}`);
-      this.logger.log(`Prompt: ${message.prompt}`);
+      this.logger.log(`[${correlationId}] Processing job: ${message.jobId}`);
+      this.logger.log(`[${correlationId}] Search prompt: "${message.prompt}"`);
 
-      // Simulate data ingestion with hardcoded data
-      const hardcodedData: RawDataMessage = {
-        jobId: message.jobId,
-        textContent:
-          'Hello from Reddit! This is a hardcoded positive post about Egypt.',
-        source: 'reddit',
-        sourceUrl: 'https://reddit.com/r/egypt/fake-post',
-        authorName: 'test_user_123',
-        upvotes: 42,
-        commentCount: 10,
-        collectedAt: new Date(),
-      };
+      // Simulate API latency (Reddit API would take 1-3 seconds)
+      await this.simulateApiLatency();
 
-      // Simulate processing delay (1 second)
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Generate hardcoded sample data
+      // In Phase 3, this will be real Reddit data
+      const rawDataItems = this.generateHardcodedData(message);
 
-      // Publish raw data to analysis service
-      this.rabbitmqService.emit(MESSAGE_PATTERNS.JOB_RAW_DATA, hardcodedData);
+      this.logger.log(
+        `[${correlationId}] Collected ${rawDataItems.length} data points`,
+      );
 
-      this.logger.log(`Raw data published for job: ${message.jobId}`);
+      // Publish each raw data item to the Analysis service
+      for (const rawData of rawDataItems) {
+        this.rabbitmqService.emit(MESSAGE_PATTERNS.JOB_RAW_DATA, rawData);
+        this.logger.debug(
+          `[${correlationId}] Published raw data: ${rawData.textContent.substring(0, 50)}...`,
+        );
+      }
+
+      const duration = Date.now() - startTime;
+      this.logger.log(
+        `[${correlationId}] Job processed in ${duration}ms, published ${rawDataItems.length} items`,
+      );
     } catch (error) {
+      const duration = Date.now() - startTime;
       this.logger.error(
-        `Failed to process job: ${message.jobId}`,
+        `[${correlationId}] Job failed after ${duration}ms`,
         error instanceof Error ? error.stack : String(error),
       );
       throw error;
     }
+  }
+
+  /**
+   * Simulate API latency for realistic testing
+   */
+  private async simulateApiLatency(): Promise<void> {
+    const delay = 500 + Math.random() * 1000; // 500-1500ms
+    await new Promise((resolve) => setTimeout(resolve, delay));
+  }
+
+  /**
+   * Generate hardcoded sample data for the Walking Skeleton
+   *
+   * Returns 3 sample Reddit-like posts with varying sentiments
+   */
+  private generateHardcodedData(message: StartJobMessage): RawDataMessage[] {
+    const now = new Date();
+
+    return [
+      {
+        jobId: message.jobId,
+        textContent: `I absolutely love ${message.prompt}! It's amazing and has changed my life for the better. Highly recommend to everyone!`,
+        source: 'reddit',
+        sourceUrl: `https://reddit.com/r/sample/post_positive_${message.jobId.slice(0, 8)}`,
+        authorName: 'happy_user_123',
+        upvotes: 156,
+        commentCount: 23,
+        collectedAt: now,
+      },
+      {
+        jobId: message.jobId,
+        textContent: `${message.prompt} is okay I guess. Not great, not terrible. Average experience overall. Could be better.`,
+        source: 'reddit',
+        sourceUrl: `https://reddit.com/r/sample/post_neutral_${message.jobId.slice(0, 8)}`,
+        authorName: 'neutral_observer',
+        upvotes: 42,
+        commentCount: 8,
+        collectedAt: now,
+      },
+      {
+        jobId: message.jobId,
+        textContent: `Terrible experience with ${message.prompt}. Complete waste of time and money. Would not recommend at all. Very disappointed.`,
+        source: 'reddit',
+        sourceUrl: `https://reddit.com/r/sample/post_negative_${message.jobId.slice(0, 8)}`,
+        authorName: 'disappointed_customer',
+        upvotes: 89,
+        commentCount: 45,
+        collectedAt: now,
+      },
+    ];
   }
 }
