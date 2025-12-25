@@ -1,7 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
-import { IngestionModule } from './ingestion.module';
 import { Logger } from '@nestjs/common';
+import { IngestionModule } from './ingestion.module';
 import {
   RABBITMQ_CONSTANTS,
   buildRabbitMqUrl,
@@ -11,32 +11,41 @@ import {
 async function bootstrap() {
   const logger = new Logger('IngestionBootstrap');
 
-  // Build RabbitMQ URL using shared utility (reads from process.env)
+  // HTTP port for health checks
+  const httpPort = process.env.INGESTION_PORT || 3001;
+
+  // Build RabbitMQ URL
   const rabbitmqUrl = buildRabbitMqUrl();
   const queue = RABBITMQ_CONSTANTS.QUEUES.LYREBIRD_MAIN;
 
-  logger.log(`Connecting to: ${getSanitizedRabbitMqUrl(rabbitmqUrl)}`);
+  logger.log(`RabbitMQ: ${getSanitizedRabbitMqUrl(rabbitmqUrl)}`);
 
-  // Create microservice
-  const app = await NestFactory.createMicroservice<MicroserviceOptions>(
-    IngestionModule,
-    {
-      transport: Transport.RMQ,
-      options: {
-        urls: [rabbitmqUrl],
-        queue,
-        queueOptions: {
-          durable: RABBITMQ_CONSTANTS.DEFAULTS.QUEUE_DURABLE,
-        },
-        noAck: RABBITMQ_CONSTANTS.DEFAULTS.NO_ACK,
-        prefetchCount: RABBITMQ_CONSTANTS.DEFAULTS.PREFETCH_COUNT,
-        wildcards: true,
+  // Create hybrid application (HTTP + Microservice)
+  const app = await NestFactory.create(IngestionModule);
+
+  // Connect microservice transport (RabbitMQ)
+  app.connectMicroservice<MicroserviceOptions>({
+    transport: Transport.RMQ,
+    options: {
+      urls: [rabbitmqUrl],
+      queue,
+      queueOptions: {
+        durable: RABBITMQ_CONSTANTS.DEFAULTS.QUEUE_DURABLE,
       },
+      noAck: RABBITMQ_CONSTANTS.DEFAULTS.NO_ACK, // false = manual ack
+      prefetchCount: RABBITMQ_CONSTANTS.DEFAULTS.PREFETCH_COUNT,
     },
-  );
+  });
 
-  await app.listen();
-  logger.log('Ingestion service is listening for messages');
+  // Start all microservices
+  await app.startAllMicroservices();
+
+  // Start HTTP server for health checks
+  await app.listen(httpPort);
+
+  logger.log(`Ingestion HTTP server: http://localhost:${httpPort}`);
+  logger.log(`Health Check: http://localhost:${httpPort}/health`);
+  logger.log(`Listening for RabbitMQ messages on queue: ${queue}`);
 }
 
 bootstrap().catch((error) => {
