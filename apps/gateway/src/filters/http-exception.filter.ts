@@ -27,23 +27,25 @@ export class HttpExceptionFilter implements ExceptionFilter {
         ? exception.getResponse()
         : 'Internal server error';
 
-    interface ErrorResponse {
-      message?: string | string[];
-      error?: string;
-      statusCode?: number;
+    let errorMessage: string;
+    let errors: string[] | undefined;
+
+    if (typeof message === 'string') {
+      errorMessage = message;
+    } else if (typeof message === 'object' && message !== null) {
+      const errorObject = message as {
+        error?: string;
+        message?: string | string[];
+      };
+      errorMessage = errorObject.error || 'Internal Server Error';
+      if (Array.isArray(errorObject.message)) {
+        errors = errorObject.message;
+      } else if (typeof errorObject.message === 'string') {
+        errors = [errorObject.message];
+      }
+    } else {
+      errorMessage = 'Internal Server Error';
     }
-
-    const messageText =
-      typeof message === 'string'
-        ? message
-        : (message as ErrorResponse).message || 'Internal server error';
-
-    const errors =
-      typeof message === 'object' && (message as ErrorResponse).message
-        ? Array.isArray((message as ErrorResponse).message)
-          ? (message as ErrorResponse).message
-          : [(message as ErrorResponse).message as string]
-        : undefined;
 
     const correlationIdHeader = request.headers['x-correlation-id'];
     const correlationId = Array.isArray(correlationIdHeader)
@@ -55,7 +57,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       timestamp: new Date().toISOString(),
       path: request.url,
       method: request.method,
-      message: messageText,
+      message: errorMessage,
       errors,
       correlationId,
     };
