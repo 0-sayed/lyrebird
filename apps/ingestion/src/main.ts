@@ -40,6 +40,10 @@ async function bootstrap() {
 }
 
 bootstrap().catch((error) => {
-  console.error('Failed to start Ingestion service:', error);
+  const logger = new Logger('IngestionBootstrap');
+  logger.error(
+    'Failed to start Ingestion service',
+    error instanceof Error ? error.stack : String(error),
+  );
   process.exit(1);
 });
