@@ -1,10 +1,4 @@
-import {
-  IsString,
-  IsNotEmpty,
-  MaxLength,
-  IsOptional,
-  MinLength,
-} from 'class-validator';
+import { IsString, IsNotEmpty, MaxLength, MinLength } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateJobDto {
@@ -19,13 +13,4 @@ export class CreateJobDto {
   @MinLength(3, { message: 'Prompt must be at least 3 characters' })
   @MaxLength(500, { message: 'Prompt cannot exceed 500 characters' })
   prompt: string;
-
-  @ApiProperty({
-    description: 'Data source for analysis',
-    example: 'reddit',
-    required: false,
-  })
-  @IsOptional()
-  @IsString()
-  source?: string;
 }

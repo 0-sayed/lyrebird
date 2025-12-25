@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { JobStatus } from '@app/shared-types';
 
 export class JobResponseDto {
   @ApiProperty({
@@ -9,10 +10,10 @@ export class JobResponseDto {
 
   @ApiProperty({
     description: 'Job status',
-    example: 'pending',
-    enum: ['pending', 'processing', 'completed', 'failed'],
+    example: JobStatus.PENDING,
+    enum: JobStatus,
   })
-  status: string;
+  status: JobStatus;
 
   @ApiProperty({
     description: 'Job creation timestamp',
