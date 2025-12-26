@@ -7,7 +7,7 @@ import {
 } from '@nestjs/microservices';
 import type { Channel, Message } from 'amqplib';
 import { IngestionService } from './ingestion.service';
-import { MESSAGE_PATTERNS } from '@app/shared-types';
+import { MESSAGE_PATTERNS, sanitizeForLog } from '@app/shared-types';
 import type { StartJobMessage } from '@app/shared-types';
 
 @Controller()
@@ -32,14 +32,18 @@ export class IngestionController {
 
     // Extract correlation ID if present in message properties
     const correlationId: string =
-      (originalMsg.properties?.correlationId as string | undefined) ||
+      (
+        originalMsg.properties?.correlationId as Buffer | undefined
+      )?.toString() ||
       data.jobId ||
       'unknown';
 
     this.logger.log(
       `[${correlationId}] Received ${MESSAGE_PATTERNS.JOB_START}`,
     );
-    this.logger.debug(`[${correlationId}] Payload: ${JSON.stringify(data)}`);
+    this.logger.debug(
+      `[${correlationId}] Job: ${data.jobId} | Prompt: "${sanitizeForLog(data.prompt, 50)}..."`,
+    );
 
     try {
       // Validate required fields

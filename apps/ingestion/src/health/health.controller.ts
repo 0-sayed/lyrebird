@@ -1,8 +1,9 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Logger } from '@nestjs/common';
 import { RabbitmqService } from '@app/rabbitmq';
 
 @Controller('health')
 export class HealthController {
+  private readonly logger = new Logger(HealthController.name);
   private readonly startTime: Date;
 
   constructor(private readonly rabbitmqService: RabbitmqService) {
@@ -20,20 +21,19 @@ export class HealthController {
   }
 
   @Get('ready')
-  async getReadiness() {
-    // Check if RabbitMQ is connected by performing an actual health check
+  getReadiness() {
     let rabbitmqHealthy = false;
     try {
-      // Use the service's health check which attempts a real message operation
-      rabbitmqHealthy = await this.rabbitmqService.healthCheck();
-    } catch {
-      rabbitmqHealthy = false;
+      rabbitmqHealthy = this.rabbitmqService.isConnected();
+    } catch (error) {
+      this.logger.error(
+        'Health check failed',
+        error instanceof Error ? error.stack : String(error),
+      );
     }
 
-    const isReady = rabbitmqHealthy;
-
     return {
-      status: isReady ? 'ready' : 'not_ready',
+      status: rabbitmqHealthy ? 'ready' : 'not_ready',
       service: 'ingestion',
       timestamp: new Date().toISOString(),
       checks: {
