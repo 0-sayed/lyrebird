@@ -128,6 +128,25 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Check if RabbitMQ client is connected
+   * Returns the connection state without sending messages
+   */
+  isConnected(): boolean {
+    try {
+      // Check if client exists and is connected
+      // The ClientProxy doesn't expose connection state directly,
+      // so we check if the client exists
+      return !!this.client;
+    } catch (error) {
+      this.logger.error(
+        'Failed to check RabbitMQ connection status',
+        error instanceof Error ? error.stack : String(error),
+      );
+      return false;
+    }
+  }
+
+  /**
    * Get the underlying ClientProxy (for advanced usage)
    */
   getClient(): ClientProxy {

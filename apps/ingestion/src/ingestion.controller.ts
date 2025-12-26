@@ -7,7 +7,7 @@ import {
 } from '@nestjs/microservices';
 import type { Channel, Message } from 'amqplib';
 import { IngestionService } from './ingestion.service';
-import { MESSAGE_PATTERNS } from '@app/shared-types';
+import { MESSAGE_PATTERNS, sanitizeForLog } from '@app/shared-types';
 import type { StartJobMessage } from '@app/shared-types';
 
 @Controller()
@@ -17,35 +17,98 @@ export class IngestionController {
   constructor(private readonly ingestionService: IngestionService) {}
 
   /**
-   * Listen for JOB_START messages
-   * When Gateway publishes a job.start message, this handler is triggered
+   * Listen for JOB_START messages from Gateway
+   *
+   * Message Flow:
+   * Gateway -> RabbitMQ ('job.start') -> Ingestion (this handler)
    */
   @MessagePattern(MESSAGE_PATTERNS.JOB_START)
   async handleStartJob(
     @Payload() data: StartJobMessage,
     @Ctx() context: RmqContext,
   ) {
-    this.logger.log(`Received message: ${MESSAGE_PATTERNS.JOB_START}`);
-
     const channel = context.getChannelRef() as Channel;
     const originalMsg = context.getMessage() as Message;
 
+    // Extract correlation ID if present in message properties
+    const correlationId: string =
+      (
+        originalMsg.properties?.correlationId as Buffer | undefined
+      )?.toString() ||
+      data.jobId ||
+      'unknown';
+
+    this.logger.log(
+      `[${correlationId}] Received ${MESSAGE_PATTERNS.JOB_START}`,
+    );
+    this.logger.debug(
+      `[${correlationId}] Job: ${data.jobId} | Prompt: "${sanitizeForLog(data.prompt, 50)}..."`,
+    );
+
     try {
+      // Validate required fields
+      if (!data.jobId || !data.prompt) {
+        this.logger.error(
+          `[${correlationId}] Invalid message: missing jobId or prompt`,
+        );
+        // Don't requeue invalid messages - they'll never succeed
+        channel.nack(originalMsg, false, false);
+        return;
+      }
+
       // Process the job
-      await this.ingestionService.processJob(data);
+      await this.ingestionService.processJob(data, correlationId);
 
-      // Manually acknowledge the message (important!)
+      // Acknowledge successful processing
       channel.ack(originalMsg);
-
-      this.logger.log(`Message acknowledged: ${MESSAGE_PATTERNS.JOB_START}`);
+      this.logger.log(`[${correlationId}] Message acknowledged successfully`);
     } catch (error) {
       this.logger.error(
-        'Error processing message',
+        `[${correlationId}] Error processing message`,
         error instanceof Error ? error.stack : String(error),
       );
 
-      // Reject and requeue the message on error
-      channel.nack(originalMsg, false, true); // requeue = true
+      // Determine if we should requeue
+      const shouldRequeue = this.shouldRequeue(error);
+
+      if (shouldRequeue) {
+        this.logger.warn(`[${correlationId}] Requeuing message for retry`);
+        channel.nack(originalMsg, false, true);
+      } else {
+        this.logger.error(`[${correlationId}] Discarding message (no requeue)`);
+        channel.nack(originalMsg, false, false);
+      }
     }
+  }
+
+  /**
+   * Determine if an error is transient and should be retried
+   */
+  private shouldRequeue(error: unknown): boolean {
+    if (error instanceof Error) {
+      const message = error.message.toLowerCase();
+
+      // Transient errors - should retry
+      if (
+        message.includes('timeout') ||
+        message.includes('connection') ||
+        message.includes('econnrefused') ||
+        message.includes('temporary')
+      ) {
+        return true;
+      }
+
+      // Permanent errors - don't retry
+      if (
+        message.includes('validation') ||
+        message.includes('invalid') ||
+        message.includes('not found')
+      ) {
+        return false;
+      }
+    }
+
+    // Default: do not requeue unknown errors to avoid infinite retry loops
+    return false;
   }
 }
