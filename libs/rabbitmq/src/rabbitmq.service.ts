@@ -16,29 +16,44 @@ import {
   RABBITMQ_CONSTANTS,
   buildRabbitMqUrl,
   getSanitizedRabbitMqUrl,
+  getQueueForPattern,
 } from './rabbitmq.constants';
 
 @Injectable()
 export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RabbitmqService.name);
-  private client: ClientProxy;
+
+  // Map of queue name -> ClientProxy
+  private clients: Map<string, ClientProxy> = new Map();
 
   constructor(private configService: ConfigService) {}
 
   /**
-   * Initialize RabbitMQ connection on module startup
+   * Initialize RabbitMQ connections on module startup
+   * Creates a client for each target queue
    */
   async onModuleInit() {
     try {
-      this.logger.log('Initializing RabbitMQ connection...');
+      this.logger.log('Initializing RabbitMQ connections...');
 
-      // Create RabbitMQ client
-      this.client = ClientProxyFactory.create(this.getRmqOptions());
+      const url = buildRabbitMqUrl(this.configService);
+      this.logger.log(`Connecting to: ${getSanitizedRabbitMqUrl(url)}`);
 
-      // Connect to RabbitMQ
-      await this.client.connect();
+      // Create a client for each queue
+      const queues = Object.values(RABBITMQ_CONSTANTS.QUEUES);
 
-      this.logger.log('RabbitMQ connected successfully');
+      for (const queue of queues) {
+        const client = ClientProxyFactory.create(
+          this.getRmqOptionsForQueue(url, queue),
+        );
+        await client.connect();
+        this.clients.set(queue, client);
+        this.logger.log(`Connected to queue: ${queue}`);
+      }
+
+      this.logger.log(
+        `RabbitMQ connected successfully (${queues.length} queues)`,
+      );
     } catch (error) {
       this.logger.error(
         'Failed to connect to RabbitMQ',
@@ -49,30 +64,31 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Close RabbitMQ connection on module shutdown
+   * Close all RabbitMQ connections on module shutdown
    */
   async onModuleDestroy() {
     try {
-      this.logger.log('Closing RabbitMQ connection...');
-      await this.client.close();
-      this.logger.log('RabbitMQ connection closed');
+      this.logger.log('Closing RabbitMQ connections...');
+
+      for (const [queue, client] of this.clients) {
+        await client.close();
+        this.logger.debug(`Closed connection to queue: ${queue}`);
+      }
+
+      this.clients.clear();
+      this.logger.log('All RabbitMQ connections closed');
     } catch (error) {
       this.logger.error(
-        'Error closing RabbitMQ connection',
+        'Error closing RabbitMQ connections',
         error instanceof Error ? error.stack : String(error),
       );
     }
   }
 
   /**
-   * Get RabbitMQ connection options
+   * Get RabbitMQ connection options for a specific queue
    */
-  private getRmqOptions(): RmqOptions {
-    const url = buildRabbitMqUrl(this.configService);
-    const queue = RABBITMQ_CONSTANTS.QUEUES.LYREBIRD_MAIN;
-
-    this.logger.log(`Connecting to: ${getSanitizedRabbitMqUrl(url)}`);
-
+  private getRmqOptionsForQueue(url: string, queue: string): RmqOptions {
     return {
       transport: Transport.RMQ,
       options: {
@@ -81,43 +97,72 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
         queueOptions: {
           durable: RABBITMQ_CONSTANTS.DEFAULTS.QUEUE_DURABLE,
         },
-        // Don't set noAck for ClientProxy - NestJS handles reply queue automatically
         prefetchCount: RABBITMQ_CONSTANTS.DEFAULTS.PREFETCH_COUNT,
       },
     };
   }
 
   /**
-   * Emit an event (fire-and-forget)
-   * Use this for events that don't need a response
+   * Get the client for a specific queue
    */
-  emit<T = any>(pattern: string, data: T): void {
-    this.logger.debug(`Emitting event: ${pattern}`, data);
-    this.client.emit(pattern, data);
+  private getClientForQueue(queue: string): ClientProxy {
+    const client = this.clients.get(queue);
+    if (!client) {
+      throw new Error(`No client available for queue: ${queue}`);
+    }
+    return client;
+  }
+
+  /**
+   * Get the client for a specific pattern (auto-routes to correct queue)
+   */
+  private getClientForPattern(pattern: string): ClientProxy {
+    const queue = getQueueForPattern(pattern);
+    return this.getClientForQueue(queue);
+  }
+
+  /**
+   * Emit an event (fire-and-forget)
+   * Automatically routes to the correct queue based on pattern
+   */
+  emit<T = unknown>(pattern: string, data: T): void {
+    const queue = getQueueForPattern(pattern);
+    this.logger.debug(`Emitting event: ${pattern} → ${queue}`, data);
+    const client = this.getClientForQueue(queue);
+    client.emit(pattern, data);
   }
 
   /**
    * Send a message and wait for response (request-response)
-   * Use this when you need a reply
+   * Automatically routes to the correct queue based on pattern
    */
-  async send<TResult = any, TInput = any>(
+  async send<TResult = unknown, TInput = unknown>(
     pattern: string,
     data: TInput,
   ): Promise<TResult> {
-    this.logger.debug(`Sending message: ${pattern}`, data);
-    return lastValueFrom(this.client.send<TResult>(pattern, data));
+    const queue = getQueueForPattern(pattern);
+    this.logger.debug(`Sending message: ${pattern} → ${queue}`, data);
+    const client = this.getClientForQueue(queue);
+    return lastValueFrom(client.send<TResult>(pattern, data));
   }
 
   /**
-   * Health check - verify RabbitMQ connection
+   * Emit directly to a specific queue (bypass pattern routing)
+   * Use this when you need explicit control over the target queue
    */
-  async healthCheck(): Promise<boolean> {
+  emitToQueue<T = unknown>(queue: string, pattern: string, data: T): void {
+    this.logger.debug(`Emitting event: ${pattern} → ${queue} (direct)`, data);
+    const client = this.getClientForQueue(queue);
+    client.emit(pattern, data);
+  }
+
+  /**
+   * Health check - verify RabbitMQ connections
+   */
+  healthCheck(): boolean {
     try {
-      // Simple ping-pong health check
-      const result = await this.send<string>('health.check', {
-        timestamp: new Date(),
-      });
-      return !!result;
+      // Check if all clients are connected
+      return this.clients.size > 0;
     } catch (error) {
       this.logger.error(
         'RabbitMQ health check failed',
@@ -128,15 +173,11 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Check if RabbitMQ client is connected
-   * Returns the connection state without sending messages
+   * Check if RabbitMQ clients are connected
    */
   isConnected(): boolean {
     try {
-      // Check if client exists and is connected
-      // The ClientProxy doesn't expose connection state directly,
-      // so we check if the client exists
-      return !!this.client;
+      return this.clients.size > 0;
     } catch (error) {
       this.logger.error(
         'Failed to check RabbitMQ connection status',
@@ -147,9 +188,19 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Get the underlying ClientProxy (for advanced usage)
+   * Get client for a specific queue (for advanced usage)
    */
-  getClient(): ClientProxy {
-    return this.client;
+  getClient(queue?: string): ClientProxy {
+    if (queue) {
+      return this.getClientForQueue(queue);
+    }
+    // Return first client if no queue specified (for backwards compatibility)
+    const firstClient = this.clients.values().next().value as
+      | ClientProxy
+      | undefined;
+    if (!firstClient) {
+      throw new Error('No RabbitMQ clients available');
+    }
+    return firstClient;
   }
 }
