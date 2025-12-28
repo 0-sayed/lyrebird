@@ -16,7 +16,7 @@ async function bootstrap() {
 
   // Build RabbitMQ URL
   const rabbitmqUrl = buildRabbitMqUrl();
-  const queue = RABBITMQ_CONSTANTS.QUEUES.LYREBIRD_MAIN;
+  const queue = RABBITMQ_CONSTANTS.QUEUES.INGESTION;
 
   logger.log(`RabbitMQ: ${getSanitizedRabbitMqUrl(rabbitmqUrl)}`);
 
