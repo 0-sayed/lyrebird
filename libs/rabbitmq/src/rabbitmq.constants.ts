@@ -8,12 +8,14 @@
 import { ConfigService } from '@nestjs/config';
 
 export const RABBITMQ_CONSTANTS = {
-  // Queue names
+  // Queue names - each service has its own queue
   QUEUES: {
-    LYREBIRD_MAIN: 'lyrebird_queue',
+    INGESTION: 'lyrebird.ingestion',
+    ANALYSIS: 'lyrebird.analysis',
+    GATEWAY: 'lyrebird.gateway',
   },
 
-  // Exchange names (for future use)
+  // Exchange names (for future use with topic routing)
   EXCHANGES: {
     LYREBIRD_TOPIC: 'lyrebird.topic',
   },
@@ -25,6 +27,29 @@ export const RABBITMQ_CONSTANTS = {
     NO_ACK: false,
   },
 } as const;
+
+/**
+ * Pattern to Queue routing map
+ * Defines which queue should receive messages for each pattern
+ */
+export const PATTERN_TO_QUEUE: Record<string, string> = {
+  'job.start': RABBITMQ_CONSTANTS.QUEUES.INGESTION,
+  'job.raw_data': RABBITMQ_CONSTANTS.QUEUES.ANALYSIS,
+  'job.complete': RABBITMQ_CONSTANTS.QUEUES.GATEWAY,
+  'job.failed': RABBITMQ_CONSTANTS.QUEUES.GATEWAY,
+  'health.check': RABBITMQ_CONSTANTS.QUEUES.GATEWAY,
+};
+
+/**
+ * Get the target queue for a given message pattern
+ */
+export function getQueueForPattern(pattern: string): string {
+  const queue = PATTERN_TO_QUEUE[pattern];
+  if (!queue) {
+    throw new Error(`No queue configured for pattern: ${pattern}`);
+  }
+  return queue;
+}
 
 /**
  * Build RabbitMQ URL from environment variables directly.
