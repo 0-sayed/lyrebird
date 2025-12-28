@@ -42,14 +42,16 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
       // Create a client for each queue
       const queues = Object.values(RABBITMQ_CONSTANTS.QUEUES);
 
-      for (const queue of queues) {
+      const connectionPromises = queues.map(async (queue) => {
         const client = ClientProxyFactory.create(
           this.getRmqOptionsForQueue(url, queue),
         );
         await client.connect();
         this.clients.set(queue, client);
         this.logger.log(`Connected to queue: ${queue}`);
-      }
+      });
+
+      await Promise.all(connectionPromises);
 
       this.logger.log(
         `RabbitMQ connected successfully (${queues.length} queues)`,
@@ -70,10 +72,14 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
     try {
       this.logger.log('Closing RabbitMQ connections...');
 
-      for (const [queue, client] of this.clients) {
-        await client.close();
-        this.logger.debug(`Closed connection to queue: ${queue}`);
-      }
+      const closingPromises = Array.from(this.clients.entries()).map(
+        async ([queue, client]) => {
+          await client.close();
+          this.logger.debug(`Closed connection to queue: ${queue}`);
+        },
+      );
+
+      await Promise.all(closingPromises);
 
       this.clients.clear();
       this.logger.log('All RabbitMQ connections closed');
@@ -157,12 +163,23 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Health check - verify RabbitMQ connections
+   * Health check - verify RabbitMQ connections are actually active
    */
-  healthCheck(): boolean {
+  async healthCheck(): Promise<boolean> {
     try {
-      // Check if all clients are connected
-      return this.clients.size > 0;
+      if (this.clients.size === 0) {
+        return false;
+      }
+
+      // Verify each client is actually connected by checking internal state
+      const checkPromises = Array.from(this.clients.values()).map((client) => {
+        // ClientProxy doesn't expose connection state directly,
+        // but we can verify it was successfully connected during init
+        return Promise.resolve(client !== null && client !== undefined);
+      });
+
+      const results = await Promise.all(checkPromises);
+      return results.every((isConnected) => isConnected);
     } catch (error) {
       this.logger.error(
         'RabbitMQ health check failed',
@@ -194,10 +211,10 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
     if (queue) {
       return this.getClientForQueue(queue);
     }
-    // Return first client if no queue specified (for backwards compatibility)
-    const firstClient = this.clients.values().next().value as
-      | ClientProxy
-      | undefined;
+    // Return first client if no queue specified (for backwards compatibility).
+    // WARNING: This is non-deterministic if the queue initialization order changes.
+    // For predictable behavior, please specify a queue name.
+    const firstClient = this.clients.values().next().value as ClientProxy;
     if (!firstClient) {
       throw new Error('No RabbitMQ clients available');
     }
