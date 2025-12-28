@@ -34,7 +34,7 @@ export class HealthController {
   async getReadiness() {
     let rabbitmqHealthy = false;
     try {
-      rabbitmqHealthy = this.rabbitmqService.isConnected();
+      rabbitmqHealthy = this.rabbitmqService.isInitialized();
     } catch (error) {
       this.logger.error(
         'RabbitMQ health check failed',

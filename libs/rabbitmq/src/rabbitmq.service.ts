@@ -190,14 +190,16 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Check if RabbitMQ clients are connected
+   * Check if RabbitMQ clients have been initialized
+   * Note: This only checks if clients exist, not if they're actively connected.
+   * Use healthCheck() for actual connectivity verification.
    */
-  isConnected(): boolean {
+  isInitialized(): boolean {
     try {
       return this.clients.size > 0;
     } catch (error) {
       this.logger.error(
-        'Failed to check RabbitMQ connection status',
+        'Failed to check RabbitMQ initialization status',
         error instanceof Error ? error.stack : String(error),
       );
       return false;
