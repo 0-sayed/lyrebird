@@ -10,6 +10,7 @@ import {
   SentimentLabel,
 } from '@app/shared-types';
 import { NewSentimentData } from '@app/database';
+import { Mutex } from 'async-mutex';
 
 // Track how many items we've processed per job
 // In production, this would be stored in Redis for distributed state
@@ -18,8 +19,24 @@ const jobProcessingTracker = new Map<
   { processed: number; expected: number }
 >();
 
+// Per-job mutex to prevent race conditions during concurrent message processing
+const jobMutexes = new Map<string, Mutex>();
+
 // Expected items per job (from Ingestion service - 3 hardcoded items)
 const EXPECTED_ITEMS_PER_JOB = 3;
+
+/**
+ * Get or create a mutex for a specific job
+ * Ensures serialized access to job state during concurrent processing
+ */
+function getJobMutex(jobId: string): Mutex {
+  let mutex = jobMutexes.get(jobId);
+  if (!mutex) {
+    mutex = new Mutex();
+    jobMutexes.set(jobId, mutex);
+  }
+  return mutex;
+}
 
 @Injectable()
 export class AnalysisService {
@@ -58,7 +75,8 @@ export class AnalysisService {
       );
 
       // Step 2: Prepare data for database insert
-      // Note: collectedAt comes as ISO string from JSON serialization over RabbitMQ
+      // Note: Dates come as ISO strings from JSON serialization over RabbitMQ
+      const publishedAtDate = new Date(message.publishedAt);
       const collectedAtDate = new Date(message.collectedAt);
       const sentimentRecord: NewSentimentData = {
         jobId,
@@ -72,7 +90,7 @@ export class AnalysisService {
         confidence,
         upvotes: message.upvotes ?? 0,
         commentCount: message.commentCount ?? 0,
-        publishedAt: collectedAtDate,
+        publishedAt: publishedAtDate,
         collectedAt: collectedAtDate,
         analyzedAt: new Date(),
       };
@@ -175,34 +193,43 @@ export class AnalysisService {
   /**
    * Track job processing progress and publish completion when done
    *
+   * Uses a per-job mutex to prevent race conditions when multiple messages
+   * for the same job are processed concurrently.
+   *
    * Note: In production, this state should be in Redis for distributed tracking.
-   * For the Walking Skeleton, we use in-memory tracking.
+   * For the Walking Skeleton, we use in-memory tracking with mutex protection.
    */
   private async trackJobProgress(
     jobId: string,
     correlationId: string,
   ): Promise<void> {
-    // Initialize or update tracker
-    let tracker = jobProcessingTracker.get(jobId);
-    if (!tracker) {
-      tracker = {
-        processed: 0,
-        expected: EXPECTED_ITEMS_PER_JOB,
-      };
-      jobProcessingTracker.set(jobId, tracker);
-    }
+    const mutex = getJobMutex(jobId);
 
-    tracker.processed++;
+    // Acquire lock for this job - ensures atomic read-modify-write
+    await mutex.runExclusive(async () => {
+      // Initialize or update tracker
+      let tracker = jobProcessingTracker.get(jobId);
+      if (!tracker) {
+        tracker = {
+          processed: 0,
+          expected: EXPECTED_ITEMS_PER_JOB,
+        };
+        jobProcessingTracker.set(jobId, tracker);
+      }
 
-    this.logger.log(
-      `[${correlationId}] Job progress: ${tracker.processed}/${tracker.expected}`,
-    );
+      tracker.processed++;
 
-    // Check if job is complete
-    if (tracker.processed >= tracker.expected) {
-      await this.completeJob(jobId, correlationId);
-      jobProcessingTracker.delete(jobId); // Clean up tracker
-    }
+      this.logger.log(
+        `[${correlationId}] Job progress: ${tracker.processed}/${tracker.expected}`,
+      );
+
+      // Check if job is complete
+      if (tracker.processed >= tracker.expected) {
+        await this.completeJob(jobId, correlationId);
+        jobProcessingTracker.delete(jobId); // Clean up tracker
+        jobMutexes.delete(jobId); // Clean up mutex
+      }
+    });
   }
 
   /**

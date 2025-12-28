@@ -78,8 +78,10 @@ export class IngestionService {
    * Returns 3 sample Reddit-like posts with varying sentiments
    */
   private generateHardcodedData(message: StartJobMessage): RawDataMessage[] {
-    const now = new Date();
+    const collectedAt = new Date();
 
+    // Simulate posts from different times in the past (as real Reddit posts would have)
+    // This demonstrates proper time-series data with distinct publishedAt vs collectedAt
     return [
       {
         jobId: message.jobId,
@@ -89,7 +91,8 @@ export class IngestionService {
         authorName: 'happy_user_123',
         upvotes: 156,
         commentCount: 23,
-        collectedAt: now,
+        publishedAt: new Date(collectedAt.getTime() - 2 * 60 * 60 * 1000), // 2 hours ago
+        collectedAt,
       },
       {
         jobId: message.jobId,
@@ -99,7 +102,8 @@ export class IngestionService {
         authorName: 'neutral_observer',
         upvotes: 42,
         commentCount: 8,
-        collectedAt: now,
+        publishedAt: new Date(collectedAt.getTime() - 24 * 60 * 60 * 1000), // 1 day ago
+        collectedAt,
       },
       {
         jobId: message.jobId,
@@ -109,7 +113,8 @@ export class IngestionService {
         authorName: 'disappointed_customer',
         upvotes: 89,
         commentCount: 45,
-        collectedAt: now,
+        publishedAt: new Date(collectedAt.getTime() - 7 * 24 * 60 * 60 * 1000), // 1 week ago
+        collectedAt,
       },
     ];
   }
