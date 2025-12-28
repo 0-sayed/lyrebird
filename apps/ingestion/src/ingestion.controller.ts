@@ -30,11 +30,10 @@ export class IngestionController {
     const channel = context.getChannelRef() as Channel;
     const originalMsg = context.getMessage() as Message;
 
-    // Extract correlation ID if present in message properties
+    // Extract correlation ID from message properties
+    // Note: NestJS emit() doesn't set correlationId; send() sets it as string
     const correlationId: string =
-      (
-        originalMsg.properties?.correlationId as Buffer | undefined
-      )?.toString() ||
+      (originalMsg.properties?.correlationId as string | undefined) ||
       data.jobId ||
       'unknown';
 
