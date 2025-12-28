@@ -6,17 +6,28 @@ describe('GatewayController', () => {
   let gatewayController: GatewayController;
 
   beforeEach(async () => {
+    const mockGatewayService = {
+      createJob: jest.fn(),
+      getJob: jest.fn(),
+      listJobs: jest.fn(),
+    };
+
     const app: TestingModule = await Test.createTestingModule({
       controllers: [GatewayController],
-      providers: [GatewayService],
+      providers: [
+        {
+          provide: GatewayService,
+          useValue: mockGatewayService,
+        },
+      ],
     }).compile();
 
     gatewayController = app.get<GatewayController>(GatewayController);
   });
 
-  describe('root', () => {
-    it('should return "Hello World!"', () => {
-      expect(gatewayController.getHello()).toBe('Hello World!');
+  describe('controller', () => {
+    it('should be defined', () => {
+      expect(gatewayController).toBeDefined();
     });
   });
 });
