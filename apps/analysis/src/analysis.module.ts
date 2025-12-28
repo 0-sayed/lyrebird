@@ -3,9 +3,16 @@ import { ConfigModule } from '@nestjs/config';
 import { AnalysisController } from './analysis.controller';
 import { AnalysisService } from './analysis.service';
 import { DatabaseModule } from '@app/database/database.module';
+import { RabbitmqModule } from '@app/rabbitmq';
+import { HealthModule } from './health/health.module';
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), DatabaseModule],
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    DatabaseModule,
+    RabbitmqModule,
+    HealthModule,
+  ],
   controllers: [AnalysisController],
   providers: [AnalysisService],
 })

@@ -38,6 +38,7 @@ export interface RawDataMessage {
   authorName?: string;
   upvotes?: number;
   commentCount?: number;
+  publishedAt: Date;
   collectedAt: Date;
 }
 

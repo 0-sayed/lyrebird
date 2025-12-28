@@ -6,13 +6,17 @@ import {
   Logger,
 } from '@nestjs/common';
 import { RabbitmqService } from '@app/rabbitmq';
+import { DatabaseService } from '@app/database';
 
 @Controller('health')
 export class HealthController {
   private readonly logger = new Logger(HealthController.name);
   private readonly startTime: Date;
 
-  constructor(private readonly rabbitmqService: RabbitmqService) {
+  constructor(
+    private readonly rabbitmqService: RabbitmqService,
+    private readonly databaseService: DatabaseService,
+  ) {
     this.startTime = new Date();
   }
 
@@ -20,34 +24,47 @@ export class HealthController {
   getHealth() {
     return {
       status: 'ok',
-      service: 'ingestion',
+      service: 'analysis',
       timestamp: new Date().toISOString(),
       uptime: this.getUptime(),
     };
   }
 
   @Get('ready')
-  getReadiness() {
+  async getReadiness() {
     let rabbitmqHealthy = false;
     try {
       rabbitmqHealthy = this.rabbitmqService.isConnected();
     } catch (error) {
       this.logger.error(
-        'Health check failed',
+        'RabbitMQ health check failed',
         error instanceof Error ? error.stack : String(error),
       );
     }
 
+    let databaseHealthy = false;
+    try {
+      databaseHealthy = await this.databaseService.healthCheck();
+    } catch (error) {
+      this.logger.error(
+        'Database health check failed',
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
+
+    const isReady = rabbitmqHealthy && databaseHealthy;
+
     const responseBody = {
-      status: rabbitmqHealthy ? 'ready' : 'not_ready',
-      service: 'ingestion',
+      status: isReady ? 'ready' : 'not_ready',
+      service: 'analysis',
       timestamp: new Date().toISOString(),
       checks: {
         rabbitmq: rabbitmqHealthy ? 'connected' : 'disconnected',
+        database: databaseHealthy ? 'connected' : 'disconnected',
       },
     };
 
-    if (!rabbitmqHealthy) {
+    if (!isReady) {
       throw new HttpException(responseBody, HttpStatus.SERVICE_UNAVAILABLE);
     }
 
@@ -58,7 +75,7 @@ export class HealthController {
   getLiveness() {
     return {
       status: 'alive',
-      service: 'ingestion',
+      service: 'analysis',
       timestamp: new Date().toISOString(),
     };
   }
