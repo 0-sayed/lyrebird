@@ -1,4 +1,10 @@
-import { Controller, Get, Logger } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  HttpException,
+  HttpStatus,
+  Logger,
+} from '@nestjs/common';
 import { RabbitmqService } from '@app/rabbitmq';
 
 @Controller('health')
@@ -32,7 +38,7 @@ export class HealthController {
       );
     }
 
-    return {
+    const responseBody = {
       status: rabbitmqHealthy ? 'ready' : 'not_ready',
       service: 'ingestion',
       timestamp: new Date().toISOString(),
@@ -40,6 +46,12 @@ export class HealthController {
         rabbitmq: rabbitmqHealthy ? 'connected' : 'disconnected',
       },
     };
+
+    if (!rabbitmqHealthy) {
+      throw new HttpException(responseBody, HttpStatus.SERVICE_UNAVAILABLE);
+    }
+
+    return responseBody;
   }
 
   @Get('live')
