@@ -16,7 +16,7 @@ updates:
       - 'dependencies'
       - 'npm'
     commit-message:
-      prefix: 'deps'
+      prefix: 'deps(npm)'
     groups:
       # Group minor and patch updates together
       npm-minor-and-patch:
@@ -32,11 +32,18 @@ updates:
     schedule:
       interval: 'weekly'
       day: 'saturday'
+      time: '09:00'
+      timezone: 'UTC'
+    open-pull-requests-limit: 10
     labels:
       - 'dependencies'
       - 'docker'
     commit-message:
       prefix: 'deps(docker)'
+    groups:
+      docker-dependencies:
+        patterns:
+          - '*'
 
   # GitHub Actions
   - package-ecosystem: 'github-actions'
@@ -44,8 +51,15 @@ updates:
     schedule:
       interval: 'weekly'
       day: 'saturday'
+      time: '09:00'
+      timezone: 'UTC'
+    open-pull-requests-limit: 10
     labels:
       - 'dependencies'
       - 'github-actions'
     commit-message:
       prefix: 'deps(actions)'
+    groups:
+      github-actions:
+        patterns:
+          - '*'
