@@ -8,7 +8,7 @@ import {
 } from '@nestjs/terminus';
 
 @ApiTags('health')
-@Controller('api/health')
+@Controller('health')
 export class HealthController {
   private readonly heapLimitBytes: number;
   private readonly rssLimitBytes: number;

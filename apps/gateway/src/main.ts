@@ -45,7 +45,7 @@ async function bootstrap() {
       environment: process.env.NODE_ENV || 'development',
       endpoints: {
         docs: '/api/docs',
-        health: '/api/health',
+        health: '/health',
       },
       timestamp: new Date().toISOString(),
       pid: process.pid,
