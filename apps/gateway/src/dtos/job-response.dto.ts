@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { JobStatus } from '@app/shared-types';
 
 export class JobResponseDto {
@@ -9,21 +9,39 @@ export class JobResponseDto {
   jobId: string;
 
   @ApiProperty({
-    description: 'Job status',
-    example: JobStatus.PENDING,
+    description: 'Current job status',
     enum: JobStatus,
+    example: JobStatus.PENDING,
   })
   status: JobStatus;
 
   @ApiProperty({
-    description: 'Job creation timestamp',
-    example: '2025-12-23T10:00:00.000Z',
-  })
-  createdAt: Date;
-
-  @ApiProperty({
-    description: 'Original prompt',
+    description: 'Original search prompt',
     example: 'iPhone battery life',
   })
   prompt: string;
+
+  @ApiProperty({
+    description: 'Job creation timestamp',
+    example: '2025-12-28T10:00:00.000Z',
+  })
+  createdAt: Date;
+
+  @ApiPropertyOptional({
+    description: 'Average sentiment score (0.0 - 1.0)',
+    example: 0.65,
+  })
+  averageSentiment?: number;
+
+  @ApiPropertyOptional({
+    description: 'Number of data points analyzed',
+    example: 3,
+  })
+  dataPointsCount?: number;
+
+  @ApiPropertyOptional({
+    description: 'Job completion timestamp',
+    example: '2025-12-28T10:01:00.000Z',
+  })
+  completedAt?: Date;
 }
