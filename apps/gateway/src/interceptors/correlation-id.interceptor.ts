@@ -28,8 +28,13 @@ export class CorrelationIdInterceptor implements NestInterceptor {
     // Add to request for downstream use
     request.correlationId = correlationId;
 
-    // Add to response headers
-    response.setHeader('X-Correlation-Id', correlationId);
+    // Check if this is an SSE endpoint (avoid setting headers for streaming responses)
+    const isSSE = request.url?.includes('/events');
+
+    // Add to response headers (only if headers haven't been sent yet)
+    if (!isSSE && !response.headersSent) {
+      response.setHeader('X-Correlation-Id', correlationId);
+    }
 
     const { method, url } = request;
     const startTime = Date.now();
@@ -37,6 +42,8 @@ export class CorrelationIdInterceptor implements NestInterceptor {
     return next.handle().pipe(
       tap({
         next: () => {
+          // Don't log SSE responses as they are long-lived streams
+          if (isSSE) return;
           const duration = Date.now() - startTime;
           this.logger.log(
             `[${correlationId}] ${method} ${url} - ${response.statusCode} - ${duration}ms`,
