@@ -77,7 +77,7 @@ export class GatewayController {
   })
   @ApiResponse({ status: 404, description: 'Job not found' })
   async getJob(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Req() request: Request,
   ): Promise<JobResponseDto> {
     const correlationId = request.correlationId ?? 'unknown';
