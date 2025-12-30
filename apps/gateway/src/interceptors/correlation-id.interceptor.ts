@@ -31,23 +31,14 @@ export class CorrelationIdInterceptor implements NestInterceptor {
     // Add to request for downstream use
     request.correlationId = correlationId;
 
-    // Check if this is an SSE endpoint using multiple detection methods:
-    // 1. Check handler metadata for @Sse decorator
-    const isSseHandler = this.reflector.get<boolean>(
-      'sse',
-      context.getHandler(),
-    );
-
-    // 2. Check Accept header for text/event-stream
+    // Check if this is an SSE endpoint by Accept header
     const acceptHeader = request.headers['accept'];
-    const acceptsEventStream = Array.isArray(acceptHeader)
+    const isSSE = Array.isArray(acceptHeader)
       ? acceptHeader.some((value: string) =>
           value.includes('text/event-stream'),
         )
       : typeof acceptHeader === 'string' &&
         acceptHeader.includes('text/event-stream');
-
-    const isSSE = isSseHandler || acceptsEventStream;
 
     // Safely set correlation ID header with try-catch to handle race conditions
     if (!response.headersSent) {
