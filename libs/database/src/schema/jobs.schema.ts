@@ -1,4 +1,5 @@
 import { pgTable, uuid, text, timestamp, jsonb } from 'drizzle-orm/pg-core';
+import { JobStatus } from '@app/shared-types';
 
 /**
  * Jobs table - tracks all sentiment analysis jobs
@@ -20,7 +21,8 @@ export const jobs = pgTable('jobs', {
     enum: ['pending', 'in_progress', 'completed', 'failed'],
   })
     .notNull()
-    .default('pending'),
+    .default('pending')
+    .$type<JobStatus>(),
 
   errorMessage: text('error_message'),
 
