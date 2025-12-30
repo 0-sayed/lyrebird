@@ -103,23 +103,33 @@ export class GatewayController {
 
     this.logger.log(`[${correlationId}] Fetching results for job: ${id}`);
 
-    const job = await this.gatewayService.getJob(id);
-    const sentimentData = await this.sentimentDataRepository.findByJobId(id);
-    const avgSentiment =
-      await this.sentimentDataRepository.getAverageSentimentByJobId(id);
-    const distribution =
-      await this.sentimentDataRepository.getSentimentDistributionByJobId(id);
+    const [job, sentimentData, avgSentiment, distribution] = await Promise.all([
+      this.gatewayService.getJob(id),
+      this.sentimentDataRepository.findByJobId(id),
+      this.sentimentDataRepository.getAverageSentimentByJobId(id),
+      this.sentimentDataRepository.getSentimentDistributionByJobId(id),
+    ]);
+
+    // Safe numeric conversion with NaN guard
+    let parsedAvgSentiment: number | null = null;
+    if (avgSentiment != null) {
+      const parsed = parseFloat(avgSentiment);
+      parsedAvgSentiment = isNaN(parsed) ? null : parsed;
+    }
+
+    // Guard against undefined sentimentData
+    const dataArray = sentimentData ?? [];
 
     return {
       job,
       results: {
-        averageSentiment: avgSentiment ? parseFloat(avgSentiment) : null,
-        totalDataPoints: sentimentData.length,
-        distribution: distribution.map((d) => ({
+        averageSentiment: parsedAvgSentiment,
+        totalDataPoints: dataArray.length,
+        distribution: (distribution ?? []).map((d) => ({
           label: d.label,
           count: Number(d.count),
         })),
-        data: sentimentData.map((item) => ({
+        data: dataArray.map((item) => ({
           id: item.id,
           textContent: item.textContent,
           sentimentLabel: item.sentimentLabel,

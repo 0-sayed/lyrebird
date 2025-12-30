@@ -68,7 +68,8 @@ export class JobEventsController {
         error instanceof Error ? error.stack : String(error),
       );
 
-      // Requeue for retry on transient errors
+      // TODO Phase 3 (Day 23): Replace with DLQ after N retries
+      // See: .local/agents/specify/roadmap/03-PHASE3-OVERVIEW.md Step 3.2
       const shouldRequeue = this.isTransientError(error);
       channel.nack(originalMsg, false, shouldRequeue);
     }
@@ -117,7 +118,10 @@ export class JobEventsController {
         `[${correlationId}] Error processing job failure`,
         error instanceof Error ? error.stack : String(error),
       );
-      channel.nack(originalMsg, false, true);
+
+      // TODO Phase 3: Replace with DLQ after N retries
+      const shouldRequeue = this.isTransientError(error);
+      channel.nack(originalMsg, false, shouldRequeue);
     }
   }
 
@@ -134,6 +138,7 @@ export class JobEventsController {
         message.includes('enotfound')
       );
     }
-    return true;
+    // Default to false for unknown errors to prevent infinite retries
+    return false;
   }
 }

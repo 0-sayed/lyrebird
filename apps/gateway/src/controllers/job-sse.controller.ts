@@ -18,7 +18,7 @@ import {
 } from 'rxjs';
 import { JobsRepository } from '@app/database';
 import { JobStatus } from '@app/shared-types';
-import { JOB_EVENTS } from '../events';
+import { JOB_EVENTS, SSE_MESSAGE_TYPES } from '../events';
 import type { JobCompletedEvent, JobFailedEvent } from '../events';
 
 @ApiTags('jobs')
@@ -66,7 +66,22 @@ export class JobSseController {
 
     // Return an observable that handles job lookup and streaming
     return new Observable<MessageEvent>((subscriber) => {
-      void this.initializeJobStream(jobId, subscriber);
+      const destroy$ = new Subject<void>();
+
+      this.initializeJobStream(jobId, subscriber, destroy$).catch((err) => {
+        this.logger.error(
+          `Failed to initialize job stream for job: ${jobId}`,
+          err instanceof Error ? err.stack : String(err),
+        );
+        subscriber.error(err);
+      });
+
+      // Teardown: cleanup when client disconnects
+      return () => {
+        this.logger.log(`SSE connection closed for job: ${jobId}`);
+        destroy$.next();
+        destroy$.complete();
+      };
     });
   }
 
@@ -80,13 +95,14 @@ export class JobSseController {
       complete: () => void;
       error: (err: unknown) => void;
     },
+    destroy$: Subject<void>,
   ): Promise<void> {
     try {
       // Verify job exists
       const job = await this.jobsRepository.findById(jobId);
       if (!job) {
         subscriber.next(
-          this.createMessageEvent('job.error', {
+          this.createMessageEvent(SSE_MESSAGE_TYPES.ERROR, {
             jobId,
             error: 'Job not found',
             timestamp: new Date().toISOString(),
@@ -98,14 +114,14 @@ export class JobSseController {
 
       // If job is already complete or failed, send final status immediately
       if (
-        job.status === (JobStatus.COMPLETED as string) ||
-        job.status === (JobStatus.FAILED as string)
+        job.status === JobStatus.COMPLETED ||
+        job.status === JobStatus.FAILED
       ) {
         this.logger.log(
           `Job ${jobId} already in terminal state: ${job.status}`,
         );
         subscriber.next(
-          this.createMessageEvent('job.status', {
+          this.createMessageEvent(SSE_MESSAGE_TYPES.STATUS, {
             jobId,
             status: job.status,
             timestamp: new Date().toISOString(),
@@ -119,7 +135,7 @@ export class JobSseController {
 
       // Send initial subscription confirmation
       subscriber.next(
-        this.createMessageEvent('job.subscribed', {
+        this.createMessageEvent(SSE_MESSAGE_TYPES.SUBSCRIBED, {
           jobId,
           status: job.status,
           timestamp: new Date().toISOString(),
@@ -127,36 +143,40 @@ export class JobSseController {
         }),
       );
 
-      // Create destroy subject for cleanup
-      const destroy$ = new Subject<void>();
+      // Create adapter for EventEmitter2 to work with fromEvent
+      // EventEmitter2 uses 'on' instead of 'addListener', but both are compatible
+      const eventEmitterAdapter = {
+        addListener: (event: string, handler: (data: unknown) => void) =>
+          this.eventEmitter.on(event, handler),
+        removeListener: (event: string, handler: (data: unknown) => void) =>
+          this.eventEmitter.removeListener(event, handler),
+      };
 
       // Listen for completion events for this specific job
-      fromEvent<JobCompletedEvent>(
-        this.eventEmitter as unknown as NodeJS.EventEmitter,
-        JOB_EVENTS.COMPLETED,
-      )
+      fromEvent<JobCompletedEvent>(eventEmitterAdapter, JOB_EVENTS.COMPLETED)
         .pipe(
           filter((event) => event.jobId === jobId),
           takeUntil(destroy$),
         )
         .subscribe((event) => {
-          subscriber.next(this.createMessageEvent('job.completed', event));
+          subscriber.next(
+            this.createMessageEvent(SSE_MESSAGE_TYPES.COMPLETED, event),
+          );
           subscriber.complete();
           destroy$.next();
           destroy$.complete();
         });
 
       // Listen for failure events for this specific job
-      fromEvent<JobFailedEvent>(
-        this.eventEmitter as unknown as NodeJS.EventEmitter,
-        JOB_EVENTS.FAILED,
-      )
+      fromEvent<JobFailedEvent>(eventEmitterAdapter, JOB_EVENTS.FAILED)
         .pipe(
           filter((event) => event.jobId === jobId),
           takeUntil(destroy$),
         )
         .subscribe((event) => {
-          subscriber.next(this.createMessageEvent('job.failed', event));
+          subscriber.next(
+            this.createMessageEvent(SSE_MESSAGE_TYPES.FAILED, event),
+          );
           subscriber.complete();
           destroy$.next();
           destroy$.complete();
@@ -167,7 +187,7 @@ export class JobSseController {
         .pipe(takeUntil(destroy$))
         .subscribe(() => {
           subscriber.next(
-            this.createMessageEvent('heartbeat', {
+            this.createMessageEvent(SSE_MESSAGE_TYPES.HEARTBEAT, {
               jobId,
               timestamp: new Date().toISOString(),
               message: 'Connection alive',
@@ -182,7 +202,7 @@ export class JobSseController {
         error,
       );
       subscriber.next(
-        this.createMessageEvent('job.error', {
+        this.createMessageEvent(SSE_MESSAGE_TYPES.ERROR, {
           jobId,
           error: error instanceof Error ? error.message : 'Unknown error',
           timestamp: new Date().toISOString(),
