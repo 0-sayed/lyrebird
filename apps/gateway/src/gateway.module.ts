@@ -7,11 +7,7 @@ import { GatewayService } from './gateway.service';
 import { JobEventsController } from './controllers/job-events.controller';
 import { JobSseController } from './controllers/job-sse.controller';
 import { JobEventsService } from './services/job-events.service';
-import {
-  DatabaseModule,
-  JobsRepository,
-  SentimentDataRepository,
-} from '@app/database';
+import { DatabaseModule } from '@app/database';
 import { RabbitmqModule } from '@app/rabbitmq';
 import { HealthModule } from './health/health.module';
 import { HttpExceptionFilter } from './filters/http-exception.filter';
@@ -36,8 +32,6 @@ import { CorrelationIdInterceptor } from './interceptors/correlation-id.intercep
   providers: [
     GatewayService,
     JobEventsService,
-    JobsRepository,
-    SentimentDataRepository,
     {
       provide: APP_FILTER,
       useClass: HttpExceptionFilter,

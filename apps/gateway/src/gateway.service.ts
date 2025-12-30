@@ -1,5 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { JobsRepository, Job } from '@app/database';
+import { JobsRepository, Job, SentimentDataRepository } from '@app/database';
 import { RabbitmqService } from '@app/rabbitmq';
 import {
   MESSAGE_PATTERNS,
@@ -15,6 +15,7 @@ export class GatewayService {
   constructor(
     private jobsRepository: JobsRepository,
     private rabbitmqService: RabbitmqService,
+    private sentimentDataRepository: SentimentDataRepository,
   ) {}
 
   /**
@@ -71,7 +72,7 @@ export class GatewayService {
       throw new NotFoundException(`Job with ID ${jobId} not found`);
     }
 
-    return this.toJobResponseDto(job);
+    return await this.toJobResponseDto(job);
   }
 
   /**
@@ -80,15 +81,29 @@ export class GatewayService {
   async listJobs(): Promise<JobResponseDto[]> {
     const jobs = await this.jobsRepository.findAll();
 
-    return jobs.map((job) => this.toJobResponseDto(job));
+    return Promise.all(jobs.map((job) => this.toJobResponseDto(job)));
   }
 
-  private toJobResponseDto(job: Job): JobResponseDto {
+  private async toJobResponseDto(job: Job): Promise<JobResponseDto> {
+    // Fetch sentiment metrics from sentiment_data table
+    const [dataPointsCount, avgSentimentStr] = await Promise.all([
+      this.sentimentDataRepository.countByJobId(job.id),
+      this.sentimentDataRepository.getAverageSentimentByJobId(job.id),
+    ]);
+
+    // Convert average sentiment string to number (Drizzle ORM returns string for avg())
+    const averageSentiment = avgSentimentStr
+      ? parseFloat(avgSentimentStr)
+      : undefined;
+
     return {
       jobId: job.id,
-      status: job.status as JobStatus,
+      status: job.status,
       prompt: job.prompt,
       createdAt: job.createdAt,
+      averageSentiment,
+      dataPointsCount: dataPointsCount > 0 ? dataPointsCount : undefined,
+      completedAt: job.completedAt ?? undefined,
     };
   }
 }
