@@ -24,7 +24,9 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./apps/lyrebird/test/jest-e2e.json",
+    "test:e2e": "jest --config ./apps/gateway/test/jest-e2e.json",
+    "test:e2e:all": "jest --config ./apps/gateway/test/jest-e2e.json && jest --config ./apps/analysis/test/jest-e2e.json && jest --config ./apps/ingestion/test/jest-e2e.json",
+    "test:ci": "jest --coverage --ci --maxWorkers=2",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
@@ -94,9 +96,27 @@
       "^.+\\.(t|j)s$": "ts-jest"
     },
     "collectCoverageFrom": [
-      "**/*.(t|j)s"
+      "apps/**/*.ts",
+      "libs/**/*.ts",
+      "!**/*.module.ts",
+      "!**/main.ts",
+      "!**/*.d.ts",
+      "!**/index.ts"
     ],
     "coverageDirectory": "./coverage",
+    "coverageThreshold": {
+      "global": {
+        "branches": 35,
+        "functions": 38,
+        "lines": 38,
+        "statements": 39
+      }
+    },
+    "coverageReporters": [
+      "text",
+      "lcov",
+      "html"
+    ],
     "testEnvironment": "node",
     "roots": [
       "<rootDir>/apps/",
