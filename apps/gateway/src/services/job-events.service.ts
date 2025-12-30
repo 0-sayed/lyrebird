@@ -23,7 +23,7 @@ export class JobEventsService {
 
     this.logger.log(`[${correlationId}] Processing job completion: ${jobId}`);
     this.logger.log(
-      `[${correlationId}] Stats: avgSentiment=${averageSentiment.toFixed(2)}, dataPoints=${dataPointsCount}`,
+      `[${correlationId}] Stats: avgSentiment=${averageSentiment?.toFixed(2) ?? 'N/A'}, dataPoints=${dataPointsCount}`,
     );
 
     // Verify job exists and is in correct state
@@ -34,11 +34,12 @@ export class JobEventsService {
       return;
     }
 
-    // Update job status to completed
-    // Note: Analysis service already updates this, but we double-check
-    if (job.status !== (JobStatus.COMPLETED as string)) {
-      await this.jobsRepository.updateStatus(jobId, JobStatus.COMPLETED);
-      this.logger.log(`[${correlationId}] Job status updated to COMPLETED`);
+    // Validate that Analysis service has updated the status
+    // Analysis service owns the status update; Gateway only validates
+    if (job.status !== JobStatus.COMPLETED) {
+      this.logger.warn(
+        `[${correlationId}] Job ${jobId} status is ${job.status}, expected ${JobStatus.COMPLETED}. Analysis service may not have updated status correctly.`,
+      );
     }
 
     const completedAtStr =

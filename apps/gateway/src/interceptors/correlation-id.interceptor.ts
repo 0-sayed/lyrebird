@@ -5,6 +5,7 @@ import {
   CallHandler,
   Logger,
 } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { v4 as uuidv4 } from 'uuid';
@@ -13,6 +14,8 @@ import type { Request, Response } from 'express';
 @Injectable()
 export class CorrelationIdInterceptor implements NestInterceptor {
   private readonly logger = new Logger(CorrelationIdInterceptor.name);
+
+  constructor(private readonly reflector: Reflector) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const request = context.switchToHttp().getRequest<Request>();
@@ -28,12 +31,34 @@ export class CorrelationIdInterceptor implements NestInterceptor {
     // Add to request for downstream use
     request.correlationId = correlationId;
 
-    // Check if this is an SSE endpoint (avoid setting headers for streaming responses)
-    const isSSE = request.url?.includes('/events');
+    // Check if this is an SSE endpoint using multiple detection methods:
+    // 1. Check handler metadata for @Sse decorator
+    const isSseHandler = this.reflector.get<boolean>(
+      'sse',
+      context.getHandler(),
+    );
 
-    // Add to response headers (only if headers haven't been sent yet)
-    if (!isSSE && !response.headersSent) {
-      response.setHeader('X-Correlation-Id', correlationId);
+    // 2. Check Accept header for text/event-stream
+    const acceptHeader = request.headers['accept'];
+    const acceptsEventStream = Array.isArray(acceptHeader)
+      ? acceptHeader.some((value: string) =>
+          value.includes('text/event-stream'),
+        )
+      : typeof acceptHeader === 'string' &&
+        acceptHeader.includes('text/event-stream');
+
+    const isSSE = isSseHandler || acceptsEventStream;
+
+    // Safely set correlation ID header with try-catch to handle race conditions
+    if (!response.headersSent) {
+      try {
+        response.setHeader('X-Correlation-Id', correlationId);
+      } catch {
+        // Headers already sent - likely a streaming response
+        this.logger.debug(
+          `[${correlationId}] Could not set correlation header - headers already sent`,
+        );
+      }
     }
 
     const { method, url } = request;
