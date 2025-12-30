@@ -125,10 +125,13 @@ export class GatewayController {
       results: {
         averageSentiment: parsedAvgSentiment,
         totalDataPoints: dataArray.length,
-        distribution: (distribution ?? []).map((d) => ({
-          label: d.label,
-          count: Number(d.count),
-        })),
+        distribution: (distribution ?? []).map((d) => {
+          const count = Number(d.count);
+          return {
+            label: d.label,
+            count: Number.isFinite(count) ? count : 0,
+          };
+        }),
         data: dataArray.map((item) => ({
           id: item.id,
           textContent: item.textContent,
