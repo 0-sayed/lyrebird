@@ -63,12 +63,10 @@ describe('IngestionService', () => {
       jest.runAllTimers();
       await processPromise;
 
-      const emitMock = mockRabbitmqService.emit as jest.Mock<
-        void,
-        [string, unknown]
-      >;
-      const calls = emitMock.mock.calls as [[string, unknown]];
-      expect(calls[0][0]).toBe(MESSAGE_PATTERNS.JOB_RAW_DATA);
+      expect(mockRabbitmqService.emit).toHaveBeenCalledWith(
+        MESSAGE_PATTERNS.JOB_RAW_DATA,
+        expect.any(Object),
+      );
     });
 
     it('should include job ID in raw data', async () => {
@@ -79,12 +77,12 @@ describe('IngestionService', () => {
       jest.runAllTimers();
       await processPromise;
 
-      const emitMock = mockRabbitmqService.emit as jest.Mock<
-        void,
-        [string, { jobId: string }]
-      >;
-      const calls = emitMock.mock.calls as [[string, { jobId: string }]];
-      expect(calls[0][1].jobId).toBe(mockMessage.jobId);
+      expect(mockRabbitmqService.emit).toHaveBeenCalledWith(
+        MESSAGE_PATTERNS.JOB_RAW_DATA,
+        expect.objectContaining({
+          jobId: mockMessage.jobId,
+        }),
+      );
     });
 
     it('should include prompt content in generated data', async () => {
@@ -95,12 +93,14 @@ describe('IngestionService', () => {
       jest.runAllTimers();
       await processPromise;
 
-      const emitMock = mockRabbitmqService.emit as jest.Mock<
-        void,
-        [string, { textContent: string }]
-      >;
-      const calls = emitMock.mock.calls as [[string, { textContent: string }]];
-      expect(calls[0][1].textContent).toContain(mockMessage.prompt);
+      expect(mockRabbitmqService.emit).toHaveBeenCalledWith(
+        MESSAGE_PATTERNS.JOB_RAW_DATA,
+        expect.objectContaining({
+          textContent: expect.stringContaining(
+            mockMessage.prompt,
+          ) as unknown as string,
+        }),
+      );
     });
 
     it('should include source information', async () => {
@@ -111,12 +111,12 @@ describe('IngestionService', () => {
       jest.runAllTimers();
       await processPromise;
 
-      const emitMock = mockRabbitmqService.emit as jest.Mock<
-        void,
-        [string, { source: string }]
-      >;
-      const calls = emitMock.mock.calls as [[string, { source: string }]];
-      expect(calls[0][1].source).toBe('reddit');
+      expect(mockRabbitmqService.emit).toHaveBeenCalledWith(
+        MESSAGE_PATTERNS.JOB_RAW_DATA,
+        expect.objectContaining({
+          source: 'reddit',
+        }),
+      );
     });
 
     it('should include timestamps in raw data', async () => {
@@ -127,15 +127,13 @@ describe('IngestionService', () => {
       jest.runAllTimers();
       await processPromise;
 
-      const emitMock = mockRabbitmqService.emit as jest.Mock<
-        void,
-        [string, { publishedAt: Date; collectedAt: Date }]
-      >;
-      const calls = emitMock.mock.calls as [
-        [string, { publishedAt: Date; collectedAt: Date }],
-      ];
-      expect(calls[0][1].publishedAt).toBeInstanceOf(Date);
-      expect(calls[0][1].collectedAt).toBeInstanceOf(Date);
+      expect(mockRabbitmqService.emit).toHaveBeenCalledWith(
+        MESSAGE_PATTERNS.JOB_RAW_DATA,
+        expect.objectContaining({
+          publishedAt: expect.any(Date) as unknown as Date,
+          collectedAt: expect.any(Date) as unknown as Date,
+        }),
+      );
     });
   });
 });
