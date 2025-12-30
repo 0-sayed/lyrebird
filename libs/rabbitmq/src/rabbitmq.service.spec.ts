@@ -74,7 +74,7 @@ describe('RabbitmqService', () => {
 
       const result = await service.send('job.start', data);
 
-      expect(mockClient.send).toHaveBeenCalled();
+      expect(mockClient.send).toHaveBeenCalledWith('job.start', data);
       expect(result).toEqual({ success: true });
     });
   });

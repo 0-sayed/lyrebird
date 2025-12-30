@@ -60,6 +60,19 @@ describe('JobsRepository', () => {
     });
 
     it('should call insert with correct values', async () => {
+      const mockInsert = jest.fn().mockReturnThis();
+      const mockValues = jest.fn().mockReturnThis();
+      const mockReturning = jest.fn().mockResolvedValue([mockJob]);
+
+      const mockQueryBuilder = {
+        insert: mockInsert,
+        values: mockValues,
+        returning: mockReturning,
+      };
+
+      (mockDatabaseService as { db: unknown }).db =
+        mockQueryBuilder as unknown as DatabaseService['db'];
+
       const input = {
         prompt: 'Test prompt',
         status: JobStatus.PENDING,
@@ -67,9 +80,16 @@ describe('JobsRepository', () => {
 
       const result = await repository.create(input);
 
-      // Verify the repository returns the expected result from the mock
-      expect(result).toBeDefined();
-      expect(result.prompt).toBe('Test prompt for TDD');
+      // Verify the query builder methods were called with correct input
+      expect(mockInsert).toHaveBeenCalled();
+      expect(mockValues).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: 'Test prompt',
+          status: JobStatus.PENDING,
+        }),
+      );
+      expect(mockReturning).toHaveBeenCalled();
+      expect(result).toBe(mockJob);
     });
   });
 
