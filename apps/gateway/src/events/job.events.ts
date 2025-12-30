@@ -51,11 +51,23 @@ export interface JobProgressEvent extends JobEventPayload {
 }
 
 /**
- * Event pattern constants
+ * Event pattern constants for internal event emitter
  */
 export const JOB_EVENTS = {
   STATUS_CHANGED: 'job.status.changed',
   COMPLETED: 'job.completed',
   FAILED: 'job.failed',
   PROGRESS: 'job.progress',
+} as const;
+
+/**
+ * SSE message type constants for client communication
+ */
+export const SSE_MESSAGE_TYPES = {
+  ERROR: 'job.error',
+  STATUS: 'job.status',
+  SUBSCRIBED: 'job.subscribed',
+  COMPLETED: 'job.completed',
+  FAILED: 'job.failed',
+  HEARTBEAT: 'heartbeat',
 } as const;
