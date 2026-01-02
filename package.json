@@ -30,7 +30,13 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "docker:build": "./docker/build-all.sh",
+    "docker:up": "docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d",
+    "docker:down": "docker compose -f docker-compose.yml -f docker-compose.prod.yml down",
+    "docker:logs": "docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f",
+    "docker:health": "./docker/health-check.sh",
+    "docker:clean": "docker compose -f docker-compose.yml -f docker-compose.prod.yml down -v --rmi local"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
