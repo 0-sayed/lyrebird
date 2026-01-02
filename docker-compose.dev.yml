@@ -1,0 +1,118 @@
+# ========================================
+# Lyrebird Development Docker Compose Override
+# ========================================
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+#
+# Debug Ports (all services use internal port 9229):
+#   - Gateway:   localhost:9229
+#   - Ingestion: localhost:9230
+#   - Analysis:  localhost:9231
+
+services:
+  # Development Gateway with hot-reload
+  gateway-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: development
+    container_name: lyrebird-gateway-dev
+    volumes:
+      - ./apps/gateway:/app/apps/gateway:cached
+      - ./libs:/app/libs:cached
+      - /app/node_modules
+    environment:
+      NODE_ENV: development
+      PORT: ${GATEWAY_PORT}
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_USER: ${DATABASE_USER}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+      DATABASE_NAME: ${DATABASE_NAME}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST}
+    ports:
+      - '${GATEWAY_PORT}:${GATEWAY_PORT}'
+      - '9229:9229' # Debug: Connect VS Code/Chrome to localhost:9229
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - lyrebird-network
+    command: ['pnpm', 'start:gateway']
+
+  # Development Ingestion with hot-reload
+  ingestion-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: development
+    container_name: lyrebird-ingestion-dev
+    volumes:
+      - ./apps/ingestion:/app/apps/ingestion:cached
+      - ./libs:/app/libs:cached
+      - /app/node_modules
+    environment:
+      NODE_ENV: development
+      PORT: ${INGESTION_PORT}
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_USER: ${DATABASE_USER}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+      DATABASE_NAME: ${DATABASE_NAME}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST}
+    ports:
+      - '${INGESTION_PORT}:${INGESTION_PORT}'
+      - '9230:9229' # Debug: Connect VS Code/Chrome to localhost:9230
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - lyrebird-network
+    command: ['pnpm', 'start:ingestion']
+
+  # Development Analysis with hot-reload
+  analysis-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: development
+    container_name: lyrebird-analysis-dev
+    volumes:
+      - ./apps/analysis:/app/apps/analysis:cached
+      - ./libs:/app/libs:cached
+      - /app/node_modules
+    environment:
+      NODE_ENV: development
+      PORT: ${ANALYSIS_PORT}
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_USER: ${DATABASE_USER}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+      DATABASE_NAME: ${DATABASE_NAME}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST}
+    ports:
+      - '${ANALYSIS_PORT}:${ANALYSIS_PORT}'
+      - '9231:9229' # Debug: Connect VS Code/Chrome to localhost:9231
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - lyrebird-network
+    command: ['pnpm', 'start:analysis']

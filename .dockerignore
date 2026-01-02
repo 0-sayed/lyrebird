@@ -1,0 +1,51 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Build artifacts
+dist
+coverage
+
+# Development files
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+
+# IDE / Editor
+.vscode
+.idea
+*.swp
+*.swo
+
+# Documentation
+*.md
+!README.md
+LICENSE
+
+# Test files
+**/*.spec.ts
+**/*.e2e-spec.ts
+**/test/
+**/__tests__/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Docker files (prevent recursive inclusion)
+Dockerfile*
+docker-compose*.yml
+.docker/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local development
+.local/
+tmp/
+temp/
