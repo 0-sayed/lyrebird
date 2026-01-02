@@ -10,7 +10,7 @@ FROM node:${NODE_VERSION} AS builder
 
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@10.23.0 --activate
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
@@ -26,28 +26,29 @@ RUN pnpm build:analysis
 # Production stage
 FROM node:${NODE_VERSION} AS production
 
-ENV NODE_ENV=production \
-    PORT=3002
+ENV NODE_ENV=production
 
 WORKDIR /app
 
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001 -G nodejs
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@10.23.0 --activate
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile --prod
+    pnpm install --frozen-lockfile --production
 
 COPY --from=builder --chown=nodejs:nodejs /app/dist/apps/analysis ./dist
+
+RUN apk add --no-cache wget
 
 USER nodejs
 
 EXPOSE 3002
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:3002/health || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost:${PORT:-3002}/health || exit 1
 
 CMD ["node", "dist/main.js"]

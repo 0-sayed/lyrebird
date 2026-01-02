@@ -2,21 +2,16 @@
 # Development Dockerfile with Hot Reload
 # ========================================
 # syntax=docker/dockerfile:1
+# NOTE: This runs as root user to avoid permission conflicts with mounted volumes
 
 ARG NODE_VERSION=22-alpine
 
 FROM node:${NODE_VERSION} AS development
 
-ARG SERVICE
-
 WORKDIR /app
 
 # Install pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
-
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001 -G nodejs
 
 # Copy package files
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -28,11 +23,8 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
 # Copy source code
 COPY . .
 
-# Set ownership
-RUN chown -R nodejs:nodejs /app
-
-# Switch to non-root user
-USER nodejs
+# NOTE: Running as root in development to match host user permissions
+# when volumes are mounted. This prevents permission errors with hot-reload.
 
 # Expose ports (app + debug)
 EXPOSE 3000 3001 3002 9229

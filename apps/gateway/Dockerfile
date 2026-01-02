@@ -31,8 +31,7 @@ RUN pnpm build:gateway
 # Production stage
 FROM node:${NODE_VERSION} AS production
 
-ENV NODE_ENV=production \
-    PORT=3000
+ENV NODE_ENV=production
 
 WORKDIR /app
 
@@ -48,10 +47,13 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
 # Install production dependencies only
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile --prod
+    pnpm install --frozen-lockfile --production
 
 # Copy built application
 COPY --from=builder --chown=nodejs:nodejs /app/dist/apps/gateway ./dist
+
+# Install wget for healthcheck
+RUN apk add --no-cache wget
 
 # Switch to non-root user
 USER nodejs
@@ -59,6 +61,6 @@ USER nodejs
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost:${PORT:-3000}/health || exit 1
 
 CMD ["node", "dist/main.js"]
