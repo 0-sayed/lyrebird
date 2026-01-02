@@ -5,15 +5,32 @@
 
 set -euo pipefail
 
-echo "Checking Lyrebird service health..."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-services=("localhost:3000" "localhost:3001" "localhost:3002")
+# Source .env file if it exists to get actual port configuration
+if [ -f "$PROJECT_ROOT/.env" ]; then
+    set -o allexport
+    source "$PROJECT_ROOT/.env"
+    set +o allexport
+fi
+
+# Use environment variables with sensible defaults
+GATEWAY_PORT="${GATEWAY_PORT:-3000}"
+INGESTION_PORT="${INGESTION_PORT:-3001}"
+ANALYSIS_PORT="${ANALYSIS_PORT:-3002}"
+
+echo "Checking Lyrebird service health..."
+echo "Ports: Gateway=$GATEWAY_PORT, Ingestion=$INGESTION_PORT, Analysis=$ANALYSIS_PORT"
+echo ""
+
+services=("localhost:${GATEWAY_PORT}" "localhost:${INGESTION_PORT}" "localhost:${ANALYSIS_PORT}")
 names=("Gateway" "Ingestion" "Analysis")
 
 all_healthy=true
 
 for i in "${!services[@]}"; do
-    if curl -sf "http://${services[$i]}/health" > /dev/null 2>&1; then
+    if curl -f "http://${services[$i]}/health" > /dev/null 2>&1; then
         echo "  ${names[$i]}: healthy"
     else
         echo "  ${names[$i]}: unhealthy"

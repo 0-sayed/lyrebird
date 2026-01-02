@@ -10,17 +10,42 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 cd "$PROJECT_ROOT"
 
+# Function to check if a Docker image exists
+check_image_exists() {
+  local image="$1"
+  
+  if ! docker image inspect "$image" > /dev/null 2>&1; then
+    echo "Error: Docker image $image was not created." >&2
+    return 1
+  fi
+  echo "  $image - OK"
+}
+
 echo "Building Lyrebird Docker images..."
+echo ""
 
-# Build using individual Dockerfiles
-echo "Building gateway..."
-docker build -t lyrebird-gateway:latest -f apps/gateway/Dockerfile .
+# Build all services using docker-compose (more maintainable)
+echo "Building all services defined in docker-compose.prod.yml..."
+docker compose -f docker-compose.yml -f docker-compose.prod.yml build
 
-echo "Building ingestion..."
-docker build -t lyrebird-ingestion:latest -f apps/ingestion/Dockerfile .
+echo ""
+echo "Verifying images were created successfully..."
 
-echo "Building analysis..."
-docker build -t lyrebird-analysis:latest -f apps/analysis/Dockerfile .
+# Verify all expected images exist
+SERVICES=("lyrebird-gateway" "lyrebird-ingestion" "lyrebird-analysis")
+all_images_exist=true
+
+for service in "${SERVICES[@]}"; do
+  if ! check_image_exists "${service}:latest"; then
+    all_images_exist=false
+  fi
+done
+
+if [ "$all_images_exist" = false ]; then
+  echo ""
+  echo "Error: Some images failed to build. Check the output above." >&2
+  exit 1
+fi
 
 echo ""
 echo "Build complete! Image sizes:"
