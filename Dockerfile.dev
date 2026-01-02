@@ -1,0 +1,41 @@
+# ========================================
+# Development Dockerfile with Hot Reload
+# ========================================
+# syntax=docker/dockerfile:1
+
+ARG NODE_VERSION=22-alpine
+
+FROM node:${NODE_VERSION} AS development
+
+ARG SERVICE
+
+WORKDIR /app
+
+# Install pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001 -G nodejs
+
+# Copy package files
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+
+# Install all dependencies
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile
+
+# Copy source code
+COPY . .
+
+# Set ownership
+RUN chown -R nodejs:nodejs /app
+
+# Switch to non-root user
+USER nodejs
+
+# Expose ports (app + debug)
+EXPOSE 3000 3001 3002 9229
+
+# Default command (overridden in compose)
+CMD ["pnpm", "start:dev"]
