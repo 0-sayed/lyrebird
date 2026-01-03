@@ -55,21 +55,24 @@ jobs:
   # ========================================
   # Dependency Review
   # ========================================
-  dependency-review:
-    name: Dependency Review
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    if: github.event.pull_request.draft == false
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Dependency Review
-        uses: actions/dependency-review-action@v4
-        with:
-          fail-on-severity: high
-          deny-licenses: GPL-3.0, AGPL-3.0
+  # NOTE: This job is commented out because the repository is currently private.
+  # GitHub Advanced Security (required for this action on private repos) is a paid feature.
+  # TODO: Uncomment this job when the repository is made PUBLIC at the end of Phase 2.
+  # dependency-review:
+  #   name: Dependency Review
+  #   runs-on: ubuntu-latest
+  #   timeout-minutes: 10
+  #   if: github.event.pull_request.draft == false
+  #
+  #   steps:
+  #     - name: Checkout repository
+  #       uses: actions/checkout@v4
+  #
+  #     - name: Dependency Review
+  #       uses: actions/dependency-review-action@v4
+  #       with:
+  #         fail-on-severity: high
+  #         deny-licenses: GPL-3.0, AGPL-3.0
 
   # ========================================
   # Check for Merge Conflicts
