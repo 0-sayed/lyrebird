@@ -1,0 +1,31 @@
+# ========================================
+# Lyrebird Code Owners
+# ========================================
+# These owners will be requested for review when someone opens a PR
+# that modifies code that they own.
+#
+# Order is important: later patterns override earlier ones.
+
+# Default owners for everything in the repo
+*                       @0-sayed
+
+# Gateway service
+/apps/gateway/          @0-sayed
+
+# Ingestion service
+/apps/ingestion/        @0-sayed
+
+# Analysis service
+/apps/analysis/         @0-sayed
+
+# Shared libraries
+/libs/                  @0-sayed
+
+# Infrastructure and CI/CD
+/.github/               @0-sayed
+/docker/                @0-sayed
+docker-compose*.yml     @0-sayed
+Dockerfile*             @0-sayed
+
+# Database migrations (critical - require extra review)
+/libs/database/migrations/   @0-sayed
