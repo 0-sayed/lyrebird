@@ -28,8 +28,9 @@ jobs:
     permissions:
       contents: read
       packages: write
-      attestations: write
-      id-token: write
+      # NOTE: attestations and id-token permissions disabled until repo is public
+      # attestations: write
+      # id-token: write
 
     strategy:
       fail-fast: false
