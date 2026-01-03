@@ -35,14 +35,12 @@ jobs:
         with:
           config: cliff.toml
           args: --latest --strip header
-        env:
-          OUTPUT: CHANGELOG.md
         continue-on-error: true
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          body: ${{ steps.changelog.outputs.content }}
+          body: ${{ steps.changelog.outputs.content || '## Release Notes\n\nChangelog generation failed. See commit history for details.' }}
           generate_release_notes: true
           draft: false
           prerelease: ${{ contains(github.ref, '-alpha') || contains(github.ref, '-beta') || contains(github.ref, '-rc') }}
