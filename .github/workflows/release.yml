@@ -31,14 +31,14 @@ jobs:
 
       - name: Generate changelog
         id: changelog
-        uses: orhun/git-cliff-action@v4
+        uses: orhun/git-cliff-action@e16f179f0be49ecdfe63753837f20b9531642772 # v4
         with:
           config: cliff.toml
           args: --latest --strip header
         continue-on-error: true
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
         with:
           body: ${{ steps.changelog.outputs.content || '## Release Notes\n\nChangelog generation failed. See commit history for details.' }}
           generate_release_notes: true
