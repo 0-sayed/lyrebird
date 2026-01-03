@@ -4,13 +4,14 @@
 # syntax=docker/dockerfile:1
 
 ARG NODE_VERSION=22-alpine
+ARG PNPM_VERSION=10.23.0
 
 # Build stage
 FROM node:${NODE_VERSION} AS builder
 
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@10 --activate
+RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
@@ -26,6 +27,8 @@ RUN pnpm build:analysis
 # Production stage
 FROM node:${NODE_VERSION} AS production
 
+ARG PNPM_VERSION=10.23.0
+
 ENV NODE_ENV=production
 
 WORKDIR /app
@@ -33,7 +36,7 @@ WORKDIR /app
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001 -G nodejs
 
-RUN corepack enable && corepack prepare pnpm@10 --activate
+RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
