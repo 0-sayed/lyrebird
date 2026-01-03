@@ -57,8 +57,11 @@ updates:
     labels:
       - 'dependencies'
       - 'github-actions'
+      - 'security'
     commit-message:
       prefix: 'deps(actions)'
+    # Automatically rebase when base branch updates
+    rebase-strategy: 'auto'
     groups:
       github-actions:
         patterns:

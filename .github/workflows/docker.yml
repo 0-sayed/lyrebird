@@ -1,0 +1,141 @@
+# ========================================
+# Lyrebird Docker Build & Publish
+# ========================================
+# Builds and publishes Docker images to GitHub Container Registry
+# Runs on pushes to main branch and version tags
+
+name: Docker Build & Publish
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*.*.*']
+  workflow_dispatch: # Allow manual triggers
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}/lyrebird
+
+jobs:
+  # ========================================
+  # Build and Push Docker Images
+  # ========================================
+  build-and-push:
+    name: Build ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [gateway, ingestion, analysis]
+        include:
+          - service: gateway
+            dockerfile: apps/gateway/Dockerfile
+            context: .
+          - service: ingestion
+            dockerfile: apps/ingestion/Dockerfile
+            context: .
+          - service: analysis
+            dockerfile: apps/analysis/Dockerfile
+            context: .
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha,prefix=sha-,format=long
+            type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
+
+      - name: Build and push Docker image
+        id: push
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          target: production
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            NODE_VERSION=22-alpine
+            PNPM_VERSION=10.23.0
+
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@46a583fd92dfbf46b772907a9740f888f4324bb9 # v3.1.0
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+  # ========================================
+  # Post-Build Verification
+  # ========================================
+  verify-images:
+    name: Verify Images
+    runs-on: ubuntu-latest
+    needs: [build-and-push]
+    timeout-minutes: 10
+
+    steps:
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull and verify gateway image
+        run: |
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-gateway:sha-${{ github.sha }}
+          docker image inspect ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-gateway:sha-${{ github.sha }}
+
+      - name: Pull and verify ingestion image
+        run: |
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-ingestion:sha-${{ github.sha }}
+          docker image inspect ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-ingestion:sha-${{ github.sha }}
+
+      - name: Pull and verify analysis image
+        run: |
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-analysis:sha-${{ github.sha }}
+          docker image inspect ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-analysis:sha-${{ github.sha }}
+
+      - name: Check image sizes
+        run: |
+          echo "### Image Sizes" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Service | Size |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|------|" >> $GITHUB_STEP_SUMMARY
+          for service in gateway ingestion analysis; do
+            size=$(docker image inspect ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${service}:sha-${{ github.sha }} --format '{{.Size}}' | numfmt --to=iec)
+            echo "| ${service} | ${size} |" >> $GITHUB_STEP_SUMMARY
+          done
