@@ -52,7 +52,7 @@ jobs:
         run: pnpm lint
 
       - name: Run TypeScript type check
-        run: pnpm exec tsc --noEmit
+        run: pnpm type-check
 
   # ========================================
   # Unit Test Job - Fast Feedback
