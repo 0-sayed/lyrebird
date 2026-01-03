@@ -71,7 +71,7 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
-            type=sha,prefix=sha-
+            type=sha,prefix=sha-,format=long
             type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
 
       - name: Build and push Docker image
@@ -88,6 +88,7 @@ jobs:
           cache-to: type=gha,mode=max
           build-args: |
             NODE_VERSION=22-alpine
+            PNPM_VERSION=10.23.0
 
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@v2
