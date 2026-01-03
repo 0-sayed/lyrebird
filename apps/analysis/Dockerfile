@@ -10,7 +10,7 @@ FROM node:${NODE_VERSION} AS builder
 
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@10.23.0 --activate
+RUN corepack enable && corepack prepare pnpm@10 --activate
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
@@ -33,7 +33,7 @@ WORKDIR /app
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001 -G nodejs
 
-RUN corepack enable && corepack prepare pnpm@10.23.0 --activate
+RUN corepack enable && corepack prepare pnpm@10 --activate
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
