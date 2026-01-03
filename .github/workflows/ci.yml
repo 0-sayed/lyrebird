@@ -61,7 +61,9 @@ jobs:
           path: |
             .eslintcache
             node_modules/.cache/eslint
-          key: ${{ runner.os }}-eslint-${{ hashFiles('**/pnpm-lock.yaml') }}-${{ hashFiles('**/*.ts', '**/*.js', 'eslint.config.mjs') }}
+          # Rely on ESLint's own cache invalidation for per-file changes.
+          # Cache key is based on dependency graph and ESLint config to improve hit rate.
+          key: ${{ runner.os }}-eslint-${{ hashFiles('**/pnpm-lock.yaml', 'eslint.config.mjs') }}
           restore-keys: |
             ${{ runner.os }}-eslint-${{ hashFiles('**/pnpm-lock.yaml') }}-
             ${{ runner.os }}-eslint-
@@ -113,9 +115,10 @@ jobs:
         uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
         with:
           path: |
-            .jest-cache
             node_modules/.cache/jest
-          key: ${{ runner.os }}-jest-${{ hashFiles('**/pnpm-lock.yaml') }}-${{ hashFiles('**/*.ts', '**/jest*.json') }}
+          # Rely on Jest's own cache invalidation for per-file changes.
+          # Cache key is based on dependency graph and Jest config to improve hit rate.
+          key: ${{ runner.os }}-jest-${{ hashFiles('**/pnpm-lock.yaml', '**/package.json', '**/jest*.json') }}
           restore-keys: |
             ${{ runner.os }}-jest-${{ hashFiles('**/pnpm-lock.yaml') }}-
             ${{ runner.os }}-jest-
@@ -283,8 +286,9 @@ jobs:
           path: |
             dist/
             **/.tsbuildinfo
-            node_modules/.cache
-          key: ${{ runner.os }}-tsc-${{ hashFiles('**/pnpm-lock.yaml') }}-${{ hashFiles('**/*.ts', 'tsconfig*.json') }}
+          # Rely on TypeScript's incremental builds for per-file changes.
+          # Cache key is based on dependency graph and compiler config to improve hit rate.
+          key: ${{ runner.os }}-tsc-${{ hashFiles('**/pnpm-lock.yaml', 'tsconfig*.json') }}
           restore-keys: |
             ${{ runner.os }}-tsc-${{ hashFiles('**/pnpm-lock.yaml') }}-
             ${{ runner.os }}-tsc-
