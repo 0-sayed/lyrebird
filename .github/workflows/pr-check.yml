@@ -85,7 +85,7 @@ jobs:
 
       - name: Check for merge conflicts markers
         run: |
-          if git diff --check HEAD^ HEAD; then
+          if git diff --check origin/${{ github.base_ref }}..HEAD; then
             echo "No conflict markers found"
           else
             echo "::error::Merge conflict markers detected in the code"
