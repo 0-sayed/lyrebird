@@ -11,7 +11,7 @@ FROM node:${NODE_VERSION} AS builder
 
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
+RUN corepack enable && corepack prepare pnpm@"${PNPM_VERSION}" --activate
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
