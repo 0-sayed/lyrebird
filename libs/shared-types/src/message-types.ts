@@ -24,10 +24,28 @@ export enum SentimentLabel {
   POSITIVE = 'positive',
 }
 
+/**
+ * Polling options for near-real-time data ingestion
+ */
+export interface PollingOptions {
+  /** Enable polling mode (continuous updates) */
+  enabled: boolean;
+  /** How often to poll for new posts (ms) - default: 5000 (5s) */
+  pollIntervalMs?: number;
+  /** Total job duration (ms) - default: 600000 (10min) */
+  maxDurationMs?: number;
+}
+
 export interface StartJobMessage {
   jobId: string;
   prompt: string;
   timestamp: Date;
+  /** Optional polling configuration for near-real-time updates */
+  options?: {
+    polling?: PollingOptions;
+    /** Maximum posts to fetch in one-shot mode */
+    maxPosts?: number;
+  };
 }
 
 export interface RawDataMessage {
