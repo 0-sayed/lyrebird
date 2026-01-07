@@ -18,10 +18,16 @@ export interface PollingConfig {
   signal?: AbortSignal;
 }
 
+interface ActiveJob {
+  pollInterval: NodeJS.Timeout;
+  onComplete: () => void;
+  seenPostUris: Set<string>;
+}
+
 @Injectable()
 export class PollingScraperService {
   private readonly logger = new Logger(PollingScraperService.name);
-  private activeJobs = new Map<string, NodeJS.Timeout>();
+  private activeJobs = new Map<string, ActiveJob>();
 
   constructor(private readonly blueskyClient: BlueskyClientService) {}
 
@@ -44,6 +50,17 @@ export class PollingScraperService {
       signal,
     } = config;
 
+    // Prevent resource leak: stop any existing job with the same jobId before starting a new one
+    if (this.activeJobs.has(jobId)) {
+      this.logger.warn(
+        `[${correlationId}] Job ${jobId} already exists, stopping existing job before starting new one`,
+      );
+      this.stopPollingJob(jobId);
+    }
+
+    // Track seen posts to prevent duplicate processing
+    const seenPostUris = new Set<string>();
+
     this.logger.log(
       `[${correlationId}] Starting polling job: ${jobId} for "${prompt}"`,
     );
@@ -56,11 +73,14 @@ export class PollingScraperService {
     const startTime = Date.now();
 
     // Initial fetch - get recent posts immediately
+    // isInitialFetch=true ensures errors are propagated to the caller
     await this.fetchAndProcess({
       jobId,
       prompt,
       correlationId,
       since: new Date(startTime - 60 * 60 * 1000), // Last hour
+      seenPostUris,
+      isInitialFetch: true,
       onData,
       onProcessed: (count) => {
         totalProcessed += count;
@@ -81,7 +101,6 @@ export class PollingScraperService {
             `[${correlationId}] Job duration reached, stopping polling`,
           );
           this.stopPollingJob(jobId);
-          onComplete();
           return;
         }
 
@@ -93,38 +112,47 @@ export class PollingScraperService {
         }
 
         // Fetch new posts since last fetch
-        await this.fetchAndProcess({
-          jobId,
-          prompt,
-          correlationId,
-          since: lastFetchTime,
-          onData,
-          onProcessed: (count) => {
-            if (count > 0) {
-              totalProcessed += count;
-              this.logger.log(
-                `[${correlationId}] Poll: ${count} new posts, total: ${totalProcessed}`,
-              );
-            }
-          },
-        });
+        try {
+          await this.fetchAndProcess({
+            jobId,
+            prompt,
+            correlationId,
+            since: lastFetchTime,
+            seenPostUris,
+            isInitialFetch: false,
+            onData,
+            onProcessed: (count) => {
+              if (count > 0) {
+                totalProcessed += count;
+                this.logger.log(
+                  `[${correlationId}] Poll: ${count} new posts, total: ${totalProcessed}`,
+                );
+              }
+            },
+          });
+        } catch (error) {
+          this.logger.error(
+            `[${correlationId}] Unexpected poll error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          );
+        }
 
         lastFetchTime = new Date();
       })();
     }, pollIntervalMs);
 
-    this.activeJobs.set(jobId, pollInterval);
+    this.activeJobs.set(jobId, { pollInterval, onComplete, seenPostUris });
   }
 
   /**
-   * Stop a polling job
+   * Stop a polling job and notify completion
    */
   stopPollingJob(jobId: string): void {
-    const interval = this.activeJobs.get(jobId);
-    if (interval) {
-      clearInterval(interval);
+    const job = this.activeJobs.get(jobId);
+    if (job) {
+      clearInterval(job.pollInterval);
       this.activeJobs.delete(jobId);
       this.logger.log(`Stopped polling job: ${jobId}`);
+      job.onComplete();
     }
   }
 
@@ -144,16 +172,28 @@ export class PollingScraperService {
 
   /**
    * Fetch posts and process them
+   * @param isInitialFetch - If true, errors are re-thrown to propagate to caller
    */
   private async fetchAndProcess(params: {
     jobId: string;
     prompt: string;
     correlationId: string;
     since: Date;
+    seenPostUris: Set<string>;
+    isInitialFetch: boolean;
     onData: (data: RawDataMessage) => Promise<void>;
     onProcessed: (count: number) => void;
   }): Promise<void> {
-    const { jobId, prompt, correlationId, since, onData, onProcessed } = params;
+    const {
+      jobId,
+      prompt,
+      correlationId,
+      since,
+      seenPostUris,
+      isInitialFetch,
+      onData,
+      onProcessed,
+    } = params;
 
     try {
       const result = await this.blueskyClient.searchPostsSince(prompt, since, {
@@ -161,17 +201,41 @@ export class PollingScraperService {
         sort: 'latest',
       });
 
-      let processed = 0;
-      for (const post of result.posts) {
-        const rawData = this.mapToRawDataMessage(jobId, post);
-        await onData(rawData);
-        processed++;
+      // Filter out posts we've already seen to prevent duplicate processing
+      const newPosts = result.posts.filter((post) => {
+        if (seenPostUris.has(post.uri)) {
+          return false;
+        }
+        seenPostUris.add(post.uri);
+        return true;
+      });
+
+      // Process posts concurrently for better performance
+      const results = await Promise.allSettled(
+        newPosts.map((post) => {
+          const rawData = this.mapToRawDataMessage(jobId, post);
+          return onData(rawData);
+        }),
+      );
+
+      const processed = results.filter((r) => r.status === 'fulfilled').length;
+      const failed = results.filter((r) => r.status === 'rejected').length;
+
+      if (failed > 0) {
+        this.logger.warn(
+          `[${correlationId}] ${failed} posts failed to process`,
+        );
       }
 
       onProcessed(processed);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error(`[${correlationId}] Polling fetch failed: ${message}`);
+
+      // Re-throw for initial fetch so caller can handle job failure
+      if (isInitialFetch) {
+        throw error;
+      }
       // Continue polling despite errors - don't throw
     }
   }
