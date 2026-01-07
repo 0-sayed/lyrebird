@@ -9,3 +9,4 @@ export * from './mocks/database.mock';
 export * from './mocks/rabbitmq.mock';
 export * from './mocks/repositories.mock';
 export * from './factories/job.factory';
+export * from './utils/id.util';
