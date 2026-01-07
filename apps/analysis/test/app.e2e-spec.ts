@@ -1,14 +1,58 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import request from 'supertest';
-import { AnalysisModule } from './../src/analysis.module';
+import { App } from 'supertest/types';
+import {
+  DatabaseService,
+  JobsRepository,
+  SentimentDataRepository,
+} from '@app/database';
+import { RabbitmqService } from '@app/rabbitmq';
+import {
+  createMockDatabaseService,
+  createMockRabbitmqService,
+  createMockJobsRepository,
+  createMockSentimentDataRepository,
+} from '@app/testing';
+import { AnalysisController } from '@app/analysis/analysis.controller';
+import { AnalysisService } from '@app/analysis/analysis.service';
+import { HealthController } from '@app/analysis/health/health.controller';
+
+// Create mocks using shared utilities
+const mockJobsRepository = createMockJobsRepository();
+const mockSentimentDataRepository = createMockSentimentDataRepository();
+const mockRabbitmqService = createMockRabbitmqService();
+const mockDatabaseService = createMockDatabaseService();
 
 describe('AnalysisController (e2e)', () => {
   let app: INestApplication;
 
   beforeEach(async () => {
+    jest.clearAllMocks();
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AnalysisModule],
+      imports: [ConfigModule.forRoot({ isGlobal: true })],
+      controllers: [AnalysisController, HealthController],
+      providers: [
+        AnalysisService,
+        {
+          provide: DatabaseService,
+          useValue: mockDatabaseService,
+        },
+        {
+          provide: RabbitmqService,
+          useValue: mockRabbitmqService,
+        },
+        {
+          provide: JobsRepository,
+          useValue: mockJobsRepository,
+        },
+        {
+          provide: SentimentDataRepository,
+          useValue: mockSentimentDataRepository,
+        },
+      ],
     }).compile();
 
     app = moduleFixture.createNestApplication();
@@ -20,8 +64,7 @@ describe('AnalysisController (e2e)', () => {
   });
 
   it('/health (GET)', () => {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-    return request(app.getHttpServer())
+    return request(app.getHttpServer() as App)
       .get('/health')
       .expect(200)
       .expect((res) => {

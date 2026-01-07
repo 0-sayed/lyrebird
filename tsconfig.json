@@ -29,7 +29,15 @@
       "@app/shared-types": ["libs/shared-types/src"],
       "@app/shared-types/*": ["libs/shared-types/src/*"],
       "@app/bluesky": ["libs/bluesky/src"],
-      "@app/bluesky/*": ["libs/bluesky/src/*"]
+      "@app/bluesky/*": ["libs/bluesky/src/*"],
+      "@app/testing": ["libs/testing/src"],
+      "@app/testing/*": ["libs/testing/src/*"],
+      "@app/gateway": ["apps/gateway/src"],
+      "@app/gateway/*": ["apps/gateway/src/*"],
+      "@app/analysis": ["apps/analysis/src"],
+      "@app/analysis/*": ["apps/analysis/src/*"],
+      "@app/ingestion": ["apps/ingestion/src"],
+      "@app/ingestion/*": ["apps/ingestion/src/*"]
     }
   }
 }

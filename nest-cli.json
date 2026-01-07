@@ -61,6 +61,15 @@
         "tsConfigPath": "libs/shared-types/tsconfig.lib.json"
       }
     },
+    "testing": {
+      "type": "library",
+      "root": "libs/testing",
+      "entryFile": "index",
+      "sourceRoot": "libs/testing/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/testing/tsconfig.lib.json"
+      }
+    },
     "bluesky": {
       "type": "library",
       "root": "libs/bluesky",
