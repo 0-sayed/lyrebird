@@ -9,7 +9,7 @@ import { generateId } from '../utils/id.util';
  * with sensible defaults for testing.
  */
 export class JobFactory {
-  private static idCounter = 0;
+  private static promptCounter = 0;
 
   /**
    * Create a mock job with default values
@@ -18,7 +18,7 @@ export class JobFactory {
     const now = new Date();
     return {
       id: generateId(),
-      prompt: `Test prompt ${++this.idCounter}`,
+      prompt: `Test prompt ${++this.promptCounter}`,
       status: JobStatus.PENDING,
       createdAt: now,
       updatedAt: now,
@@ -34,6 +34,7 @@ export class JobFactory {
     const now = new Date();
     return this.create({
       status: JobStatus.COMPLETED,
+      updatedAt: now,
       completedAt: now,
       ...overrides,
     });
@@ -50,9 +51,17 @@ export class JobFactory {
   }
 
   /**
-   * Reset the ID counter (useful in beforeEach)
+   * Reset the prompt counter to ensure test isolation.
+   *
+   * **Important**: Call this in `beforeEach()` to prevent tests
+   * from affecting each other due to the static counter state.
+   *
+   * @example
+   * beforeEach(() => {
+   *   JobFactory.resetCounter();
+   * });
    */
   static resetCounter(): void {
-    this.idCounter = 0;
+    this.promptCounter = 0;
   }
 }
