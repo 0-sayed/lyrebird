@@ -19,6 +19,10 @@
   "moduleNameMapper": {
     "^@app/database(|/.*)$": "<rootDir>/../../../libs/database/src/$1",
     "^@app/rabbitmq(|/.*)$": "<rootDir>/../../../libs/rabbitmq/src/$1",
-    "^@app/shared-types(|/.*)$": "<rootDir>/../../../libs/shared-types/src/$1"
+    "^@app/shared-types(|/.*)$": "<rootDir>/../../../libs/shared-types/src/$1",
+    "^@app/testing(|/.*)$": "<rootDir>/../../../libs/testing/src/$1",
+    "^@app/gateway(|/.*)$": "<rootDir>/../../gateway/src/$1",
+    "^@app/analysis(|/.*)$": "<rootDir>/../../analysis/src/$1",
+    "^@app/ingestion(|/.*)$": "<rootDir>/../src/$1"
   }
 }

@@ -1,16 +1,86 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import request from 'supertest';
-import { GatewayModule } from '../src/gateway.module';
-import { JobStatus } from '@app/shared-types';
 import { App } from 'supertest/types';
+import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
+import { JobStatus } from '@app/shared-types';
+import {
+  DatabaseService,
+  JobsRepository,
+  SentimentDataRepository,
+} from '@app/database';
+import { RabbitmqService } from '@app/rabbitmq';
+import {
+  createMockDatabaseService,
+  createMockRabbitmqService,
+  createMockJobsRepository,
+  createMockSentimentDataRepository,
+  MockJobStore,
+} from '@app/testing';
+import { GatewayController } from '@app/gateway/gateway.controller';
+import { GatewayService } from '@app/gateway/gateway.service';
+import { JobEventsController } from '@app/gateway/controllers/job-events.controller';
+import { JobSseController } from '@app/gateway/controllers/job-sse.controller';
+import { JobEventsService } from '@app/gateway/services/job-events.service';
+import { HealthModule } from '@app/gateway/health/health.module';
+import { HttpExceptionFilter } from '@app/gateway/filters/http-exception.filter';
+import { CorrelationIdInterceptor } from '@app/gateway/interceptors/correlation-id.interceptor';
+
+// Shared job store for stateful tests
+const jobStore = new MockJobStore();
+
+// Create mocks using shared utilities
+const mockJobsRepository = createMockJobsRepository(jobStore);
+const mockSentimentDataRepository = createMockSentimentDataRepository();
+const mockRabbitmqService = createMockRabbitmqService();
+const mockDatabaseService = createMockDatabaseService();
 
 describe('Gateway API (e2e)', () => {
   let app: INestApplication;
 
   beforeAll(async () => {
+    // Initialize mocks and job store once before the test suite
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [GatewayModule],
+      imports: [
+        ConfigModule.forRoot({ isGlobal: true }),
+        EventEmitterModule.forRoot({
+          wildcard: true,
+          delimiter: '.',
+          ignoreErrors: false,
+        }),
+        HealthModule,
+      ],
+      controllers: [GatewayController, JobEventsController, JobSseController],
+      providers: [
+        GatewayService,
+        JobEventsService,
+        {
+          provide: APP_FILTER,
+          useClass: HttpExceptionFilter,
+        },
+        {
+          provide: APP_INTERCEPTOR,
+          useClass: CorrelationIdInterceptor,
+        },
+        {
+          provide: JobsRepository,
+          useValue: mockJobsRepository,
+        },
+        {
+          provide: SentimentDataRepository,
+          useValue: mockSentimentDataRepository,
+        },
+        {
+          provide: RabbitmqService,
+          useValue: mockRabbitmqService,
+        },
+        {
+          provide: DatabaseService,
+          useValue: mockDatabaseService,
+        },
+      ],
     }).compile();
 
     app = moduleFixture.createNestApplication();
@@ -25,6 +95,12 @@ describe('Gateway API (e2e)', () => {
     );
 
     await app.init();
+  });
+
+  beforeEach(() => {
+    // Reset job store between tests
+    jobStore.clear();
+    jest.clearAllMocks();
   });
 
   afterAll(async () => {
