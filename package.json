@@ -42,7 +42,7 @@
     "postinstall": "chmod +x docker/*.sh || true"
   },
   "dependencies": {
-    "@atproto/api": "^0.18.9",
+    "@atproto/api": "^0.18.10",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.1",

@@ -12,8 +12,8 @@ importers:
   .:
     dependencies:
       '@atproto/api':
-        specifier: ^0.18.9
-        version: 0.18.9
+        specifier: ^0.18.10
+        version: 0.18.10
       '@nestjs/common':
         specifier: ^11.0.1
         version: 11.1.9(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -193,17 +193,17 @@ packages:
     resolution: {integrity: sha512-J4Jarr0SohdrHcb40gTL4wGPCQ952IMWF1G/MSAQfBAPvA9ZKApYhpxcY7PmehVePve+ujpus1dGsJ7dPxz8Kg==}
     engines: {node: ^18.19.1 || ^20.11.1 || >=22.0.0, npm: ^6.11.0 || ^7.5.6 || >=8.0.0, yarn: '>= 1.13.0'}
 
-  '@atproto/api@0.18.9':
-    resolution: {integrity: sha512-ft+0+sczS0qsoxwjqO1VhCXSNG792QEr+uQ91OCc36DTa3sPtaTPL7yNOVTDyEHaYDfp8tYN4v+Pq5/bzz3EpA==}
+  '@atproto/api@0.18.10':
+    resolution: {integrity: sha512-q23wreAGhktrMLepulvljZWHsUOrTIDwhU3gr/uSX3R1TZIZ3i4SxQZVlMqaQHpNJ/5Xj8J1hozkwVpaOX37eA==}
 
-  '@atproto/common-web@0.4.9':
-    resolution: {integrity: sha512-RGt1rUjVC8FEUlF5JQyN3xYlqZJbFTN0XSBBxl+HozjZGhhVtAVFGa+F+TR6BCVs7q7TcitOv/y/YWz4jJWn9g==}
+  '@atproto/common-web@0.4.10':
+    resolution: {integrity: sha512-TLDZSgSKzT8ZgOrBrTGK87J1CXve9TEuY6NVVUBRkOMzRRtQzpFb9/ih5WVS/hnaWVvE30CfuyaetRoma+WKNw==}
 
-  '@atproto/lex-data@0.0.5':
-    resolution: {integrity: sha512-nasD4eo2wKLyhHozC0vy7Jhp/fBwCKnYhQQogYtraUlT9il6lK1drhT8CNpWlglOhb0T73jLG5WpfNsPp6Pr/w==}
+  '@atproto/lex-data@0.0.6':
+    resolution: {integrity: sha512-MBNB4ghRJQzuXK1zlUPljpPbQcF1LZ5dzxy274KqPt4p3uPuRw0mHjgcCoWzRUNBQC685WMQR4IN9DHtsnG57A==}
 
-  '@atproto/lex-json@0.0.5':
-    resolution: {integrity: sha512-wgmET7fIWi77jxqHnrr0RvpAGhiFqIqjdO9Py3JK2whHMITyYgFRU0HfEtIeWSzx0Vb9z0S7F/fQW3P3gqb+yA==}
+  '@atproto/lex-json@0.0.6':
+    resolution: {integrity: sha512-EILnN5cditPvf+PCNjXt7reMuzjugxAL1fpSzmzJbEMGMUwxOf5pPWxRsaA/M3Boip4NQZ+6DVrPOGUMlnqceg==}
 
   '@atproto/lexicon@0.6.0':
     resolution: {integrity: sha512-5veb8aD+J5M0qszLJ+73KSFsFrJBgAY/nM1TSAJvGY7fNc9ZAT+PSUlmIyrdye9YznAZ07yktalls/TwNV7cHQ==}
@@ -3848,9 +3848,9 @@ snapshots:
     transitivePeerDependencies:
       - chokidar
 
-  '@atproto/api@0.18.9':
+  '@atproto/api@0.18.10':
     dependencies:
-      '@atproto/common-web': 0.4.9
+      '@atproto/common-web': 0.4.10
       '@atproto/lexicon': 0.6.0
       '@atproto/syntax': 0.4.2
       '@atproto/xrpc': 0.7.7
@@ -3859,13 +3859,13 @@ snapshots:
       tlds: 1.261.0
       zod: 3.25.76
 
-  '@atproto/common-web@0.4.9':
+  '@atproto/common-web@0.4.10':
     dependencies:
-      '@atproto/lex-data': 0.0.5
-      '@atproto/lex-json': 0.0.5
+      '@atproto/lex-data': 0.0.6
+      '@atproto/lex-json': 0.0.6
       zod: 3.25.76
 
-  '@atproto/lex-data@0.0.5':
+  '@atproto/lex-data@0.0.6':
     dependencies:
       '@atproto/syntax': 0.4.2
       multiformats: 9.9.0
@@ -3873,14 +3873,14 @@ snapshots:
       uint8arrays: 3.0.0
       unicode-segmenter: 0.14.5
 
-  '@atproto/lex-json@0.0.5':
+  '@atproto/lex-json@0.0.6':
     dependencies:
-      '@atproto/lex-data': 0.0.5
+      '@atproto/lex-data': 0.0.6
       tslib: 2.8.1
 
   '@atproto/lexicon@0.6.0':
     dependencies:
-      '@atproto/common-web': 0.4.9
+      '@atproto/common-web': 0.4.10
       '@atproto/syntax': 0.4.2
       iso-datestring-validator: 2.2.2
       multiformats: 9.9.0
