@@ -99,34 +99,46 @@ export class BlueskyClientService implements OnModuleInit {
         lang: options.lang,
       });
 
-      const posts: BlueskyPost[] = response.data.posts.map((post) => ({
-        uri: post.uri,
-        cid: post.cid,
-        author: {
-          did: post.author.did,
-          handle: post.author.handle,
-          displayName: post.author.displayName,
-          avatar: post.author.avatar,
+      const posts: BlueskyPost[] = response.data.posts.reduce<BlueskyPost[]>(
+        (acc, post) => {
+          const record = post.record as {
+            text?: string;
+            createdAt?: string;
+            langs?: string[];
+          };
+
+          // Skip posts with missing createdAt field to prevent data corruption
+          if (!record.createdAt) {
+            this.logger.warn(
+              `Skipping post ${post.uri} due to missing createdAt field`,
+            );
+            return acc;
+          }
+
+          acc.push({
+            uri: post.uri,
+            cid: post.cid,
+            author: {
+              did: post.author.did,
+              handle: post.author.handle,
+              displayName: post.author.displayName,
+              avatar: post.author.avatar,
+            },
+            record: {
+              text: record.text ?? '',
+              createdAt: record.createdAt,
+              langs: record.langs,
+            },
+            likeCount: post.likeCount,
+            repostCount: post.repostCount,
+            replyCount: post.replyCount,
+            indexedAt: post.indexedAt,
+          });
+
+          return acc;
         },
-        record: {
-          text:
-            (
-              post.record as {
-                text?: string;
-                createdAt?: string;
-                langs?: string[];
-              }
-            ).text ?? '',
-          createdAt:
-            (post.record as { createdAt?: string }).createdAt ??
-            new Date().toISOString(),
-          langs: (post.record as { langs?: string[] }).langs,
-        },
-        likeCount: post.likeCount,
-        repostCount: post.repostCount,
-        replyCount: post.replyCount,
-        indexedAt: post.indexedAt,
-      }));
+        [],
+      );
 
       this.logger.debug(`Found ${posts.length} posts for query: "${query}"`);
 
