@@ -67,14 +67,15 @@ export const createMockJobsRepository = (
 
   updateStatus: jest.fn((jobId: string, status: JobStatus): MockJob => {
     const job = store.get(jobId);
-    if (job) {
-      job.status = status;
-      job.updatedAt = new Date();
-      if (status === JobStatus.COMPLETED) {
-        job.completedAt = new Date();
-      }
+    if (!job) {
+      throw new Error(`Job with id ${jobId} not found`);
     }
-    return job as MockJob;
+    job.status = status;
+    job.updatedAt = new Date();
+    if (status === JobStatus.COMPLETED && job.completedAt === null) {
+      job.completedAt = new Date();
+    }
+    return job;
   }),
 
   // Expose store for test assertions
