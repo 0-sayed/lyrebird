@@ -23,6 +23,7 @@
     "^@app/testing(|/.*)$": "<rootDir>/../../../libs/testing/src/$1",
     "^@app/gateway(|/.*)$": "<rootDir>/../src/$1",
     "^@app/analysis(|/.*)$": "<rootDir>/../../analysis/src/$1",
-    "^@app/ingestion(|/.*)$": "<rootDir>/../../ingestion/src/$1"
+    "^@app/ingestion(|/.*)$": "<rootDir>/../../ingestion/src/$1",
+    "^@app/bluesky(|/.*)$": "<rootDir>/../../../libs/bluesky/src/$1"
   }
 }

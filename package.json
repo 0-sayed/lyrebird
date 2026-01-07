@@ -42,6 +42,7 @@
     "postinstall": "chmod +x docker/*.sh || true"
   },
   "dependencies": {
+    "@atproto/api": "^0.18.10",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.1",
@@ -93,6 +94,11 @@
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.20.0"
   },
+  "pnpm": {
+    "overrides": {
+      "qs": "6.14.1"
+    }
+  },
   "jest": {
     "moduleFileExtensions": [
       "js",
@@ -134,7 +140,8 @@
     "moduleNameMapper": {
       "^@app/database(|/.*)$": "<rootDir>/libs/database/src/$1",
       "^@app/rabbitmq(|/.*)$": "<rootDir>/libs/rabbitmq/src/$1",
-      "^@app/shared-types(|/.*)$": "<rootDir>/libs/shared-types/src/$1"
+      "^@app/shared-types(|/.*)$": "<rootDir>/libs/shared-types/src/$1",
+      "^@app/bluesky(|/.*)$": "<rootDir>/libs/bluesky/src/$1"
     }
   },
   "packageManager": "pnpm@10.23.0"

@@ -5,13 +5,15 @@ import { IngestionService } from './ingestion.service';
 import { DatabaseModule } from '@app/database/database.module';
 import { RabbitmqModule } from '@app/rabbitmq';
 import { HealthModule } from './health/health.module';
+import { ScrapersModule } from './scrapers/scrapers.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     DatabaseModule,
     RabbitmqModule,
-    HealthModule, // Add health check endpoints
+    HealthModule,
+    ScrapersModule,
   ],
   controllers: [IngestionController],
   providers: [IngestionService],
