@@ -41,7 +41,13 @@ export class BlueskyClientService implements OnModuleInit {
    */
   private async ensureAuthenticated(): Promise<void> {
     if (this.isAuthenticated) {
-      return;
+      // Check if session is still valid
+      if (this.agent.session) {
+        return;
+      }
+      // Session expired, need to re-authenticate
+      this.logger.warn('Session expired, re-authenticating');
+      this.isAuthenticated = false;
     }
 
     if (!this.identifier || !this.password) {
