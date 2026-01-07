@@ -41,10 +41,7 @@ describe('Gateway API (e2e)', () => {
   let app: INestApplication;
 
   beforeAll(async () => {
-    // Reset mocks and job store before each test suite
-    jobStore.clear();
-    jest.clearAllMocks();
-
+    // Initialize mocks and job store once before the test suite
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [
         ConfigModule.forRoot({ isGlobal: true }),
