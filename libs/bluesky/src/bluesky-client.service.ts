@@ -180,7 +180,16 @@ export class BlueskyClientService implements OnModuleInit {
    * @returns Human-readable bsky.app URL
    */
   buildPostUrl(post: BlueskyPost): string {
-    const postId = post.uri.split('/').pop();
+    const segments = post.uri.split('/');
+    const postId = segments[segments.length - 1];
+
+    if (!postId) {
+      this.logger.warn(
+        `Unable to extract postId from URI "${post.uri}" for author "${post.author.handle}". Falling back to profile URL.`,
+      );
+      return `https://bsky.app/profile/${post.author.handle}`;
+    }
+
     return `https://bsky.app/profile/${post.author.handle}/post/${postId}`;
   }
 
