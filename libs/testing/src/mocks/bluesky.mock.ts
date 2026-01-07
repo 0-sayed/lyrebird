@@ -1,3 +1,5 @@
+import type { BlueskyPost } from '@app/bluesky';
+
 /**
  * Mock implementation of BlueskyClientService for testing
  */
@@ -7,7 +9,7 @@ export const createMockBlueskyClientService = () => ({
   buildPostUrl: jest
     .fn()
     .mockImplementation(
-      (post) =>
+      (post: BlueskyPost) =>
         `https://bsky.app/profile/${post.author.handle}/post/${post.uri.split('/').pop()}`,
     ),
   onModuleInit: jest.fn(),
