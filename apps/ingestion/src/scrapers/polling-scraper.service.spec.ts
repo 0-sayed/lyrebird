@@ -485,7 +485,9 @@ describe('PollingScraperService', () => {
     });
 
     it('should handle stopping non-existent job gracefully', () => {
-      expect(() => service.stopPollingJob('non-existent')).not.toThrow();
+      expect(() => {
+        service.stopPollingJob('non-existent');
+      }).not.toThrow();
     });
 
     it('should not poll after being stopped', async () => {

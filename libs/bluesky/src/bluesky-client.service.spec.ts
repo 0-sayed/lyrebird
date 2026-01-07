@@ -7,18 +7,22 @@ import { BlueskyPost } from './types';
 const mockLogin = jest.fn();
 const mockSearchPosts = jest.fn();
 
+// Mock agent instance that will be returned by AtpAgent constructor
+const mockAgentInstance = {
+  login: mockLogin,
+  app: {
+    bsky: {
+      feed: {
+        searchPosts: mockSearchPosts,
+      },
+    },
+  },
+  session: undefined as { did: string; handle: string } | undefined,
+};
+
 jest.mock('@atproto/api', () => {
   return {
-    AtpAgent: jest.fn().mockImplementation(() => ({
-      login: mockLogin,
-      app: {
-        bsky: {
-          feed: {
-            searchPosts: mockSearchPosts,
-          },
-        },
-      },
-    })),
+    AtpAgent: jest.fn().mockImplementation(() => mockAgentInstance),
   };
 });
 
@@ -34,6 +38,7 @@ describe('BlueskyClientService', () => {
     // Reset mocks
     mockLogin.mockReset();
     mockSearchPosts.mockReset();
+    mockAgentInstance.session = undefined;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -104,6 +109,12 @@ describe('BlueskyClientService', () => {
       // First call - should authenticate
       await service.searchPosts('test1');
       expect(mockLogin).toHaveBeenCalledTimes(1);
+
+      // Set session after login to simulate successful authentication
+      mockAgentInstance.session = {
+        did: 'test-did',
+        handle: 'test.bsky.social',
+      };
 
       // Second call - should not authenticate again
       await service.searchPosts('test2');

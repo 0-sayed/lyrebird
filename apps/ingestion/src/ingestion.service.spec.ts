@@ -202,7 +202,6 @@ describe('IngestionService', () => {
         ...mockMessage,
         options: {
           polling: {
-            enabled: true,
             pollIntervalMs: 10000,
             maxDurationMs: 300000,
           },
