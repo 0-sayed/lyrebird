@@ -42,7 +42,6 @@ describe('IngestionController (e2e)', () => {
       controllers: [IngestionController, HealthController],
       providers: [
         IngestionService,
-        PollingScraperService,
         {
           provide: DatabaseService,
           useValue: mockDatabaseService,
