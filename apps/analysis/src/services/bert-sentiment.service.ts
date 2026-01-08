@@ -1,6 +1,7 @@
 import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Sentiment from 'sentiment';
+import { TransientError } from '@app/shared-types';
 
 /**
  * Sentiment analysis result
@@ -113,6 +114,14 @@ export class BertSentimentService {
   // We normalize based on typical sentence lengths
   private static readonly AFINN_MAX_SCORE = 10;
 
+  // Error TTL: Consider HuggingFace errors "recent" only for this time window.
+  // Prevents stale errors from causing the service to appear unhealthy indefinitely
+  // when functioning correctly via AFINN fallback.
+  private static readonly HF_ERROR_TTL_MS = 15 * 60 * 1000; // 15 minutes
+
+  // Default API timeout (can be overridden via HUGGINGFACE_API_TIMEOUT_MS)
+  private static readonly DEFAULT_API_TIMEOUT_MS = 10000;
+
   constructor(
     private readonly configService: ConfigService,
     @Optional()
@@ -149,6 +158,9 @@ export class BertSentimentService {
    * A HuggingFace API key being present is not sufficient to consider the service "ready":
    * if recent HuggingFace calls have been failing, the status will reflect that by
    * surfacing the last error and flipping `ready` to false for the HuggingFace provider.
+   *
+   * Errors older than HF_ERROR_TTL_MS are considered stale and cleared to prevent
+   * the service from appearing unhealthy indefinitely when functioning via AFINN fallback.
    */
   getStatus(): ServiceStatus {
     const hasApiKey = !!this.huggingfaceApiKey;
@@ -162,13 +174,36 @@ export class BertSentimentService {
       };
     }
 
-    const hasRecentHfError = !!this.hfLastError;
+    // Check if there's a recent HuggingFace error (within TTL window)
+    let hasRecentHfError = false;
+    let error: string | undefined;
+    let lastErrorAtIso: string | undefined;
+
+    if (this.hfLastError) {
+      const now = Date.now();
+      const lastErrorAt = this.hfLastErrorAt?.getTime();
+
+      if (
+        lastErrorAt == null ||
+        now - lastErrorAt <= BertSentimentService.HF_ERROR_TTL_MS
+      ) {
+        // Error is considered recent (or timestamp missing, be conservative)
+        hasRecentHfError = true;
+        error = this.hfLastError;
+        lastErrorAtIso = this.hfLastErrorAt?.toISOString();
+      } else {
+        // Error is stale; clear it so status no longer reports it
+        this.hfLastError = null;
+        this.hfLastErrorAt = null;
+      }
+    }
+
     return {
       ready: !hasRecentHfError,
       provider: 'huggingface',
       huggingfaceConfigured: true,
-      error: this.hfLastError ?? undefined,
-      lastErrorAt: this.hfLastErrorAt?.toISOString() ?? undefined,
+      error,
+      lastErrorAt: lastErrorAtIso,
     };
   }
 
@@ -228,9 +263,15 @@ export class BertSentimentService {
         headers,
       );
     } else {
-      // Use native fetch with timeout and error handling
+      // Use native fetch with configurable timeout and error handling
+      const timeoutMs = this.configService.get<number>(
+        'HUGGINGFACE_API_TIMEOUT_MS',
+        BertSentimentService.DEFAULT_API_TIMEOUT_MS,
+      );
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+      const timeoutId = setTimeout(() => {
+        controller.abort();
+      }, timeoutMs);
 
       try {
         const fetchResponse = await fetch(this.huggingfaceApiUrl, {
@@ -241,10 +282,15 @@ export class BertSentimentService {
         });
 
         if (!fetchResponse.ok) {
-          throw new HttpError(
+          const httpError = new HttpError(
             `HuggingFace API error: ${fetchResponse.status}`,
             fetchResponse.status,
           );
+          // Wrap rate limit and server errors as TransientError for retry logic
+          if (fetchResponse.status === 429 || fetchResponse.status >= 500) {
+            throw new TransientError(httpError.message);
+          }
+          throw httpError;
         }
 
         // Handle JSON parsing errors
@@ -268,9 +314,11 @@ export class BertSentimentService {
             : 'Unknown HuggingFace error';
         this.hfLastErrorAt = new Date();
 
-        // Handle network errors and timeouts
+        // Handle network errors and timeouts - wrap as TransientError
         if (fetchError instanceof Error && fetchError.name === 'AbortError') {
-          throw new Error('HuggingFace API request timed out after 10 seconds');
+          throw new TransientError(
+            `HuggingFace API request timed out after ${timeoutMs}ms`,
+          );
         }
         throw fetchError;
       } finally {
@@ -325,10 +373,11 @@ export class BertSentimentService {
     const scoredWordRatio =
       (result.positive.length + result.negative.length) /
       Math.max(1, result.tokens.length);
-    // Cap AFINN confidence below 1.0 because it is a simple lexicon-based model
+    // Cap AFINN confidence below 1.0 (at 0.85) because it is a simple lexicon-based model
     // and generally less reliable than the HuggingFace/BERT classifier; this keeps
     // its reported confidence conservative and comparable across models.
-    const confidence = Math.min(0.85, 0.4 + scoredWordRatio * 0.5);
+    // The linear formula maps scoredWordRatio in [0, 1] to confidence in [0.4, 0.85].
+    const confidence = 0.4 + scoredWordRatio * 0.45;
 
     // Determine label based on normalized score thresholds
     const label: 'positive' | 'negative' | 'neutral' =
@@ -391,8 +440,28 @@ export class BertSentimentService {
 
   /**
    * Check if an error is a rate limit error (HTTP 429)
+   *
+   * Handles both our HttpError class and errors from injected HTTP clients
+   * that may have different structures.
    */
   private isRateLimitError(error: unknown): boolean {
-    return error instanceof HttpError && error.statusCode === 429;
+    // Primary: our typed HttpError
+    if (error instanceof HttpError) {
+      return error.statusCode === 429;
+    }
+
+    // Fallback: any error object that carries a statusCode property
+    // This handles errors from injected HTTP clients during testing
+    if (typeof error === 'object' && error !== null && 'statusCode' in error) {
+      const statusCode = (error as { statusCode?: unknown }).statusCode;
+      if (typeof statusCode === 'number') {
+        return statusCode === 429;
+      }
+      if (typeof statusCode === 'string') {
+        return statusCode === '429';
+      }
+    }
+
+    return false;
   }
 }
