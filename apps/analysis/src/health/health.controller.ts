@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { RabbitmqService } from '@app/rabbitmq';
 import { DatabaseService } from '@app/database';
+import { BertSentimentService } from '../services/bert-sentiment.service';
 
 @Controller('health')
 export class HealthController {
@@ -16,6 +17,7 @@ export class HealthController {
   constructor(
     private readonly rabbitmqService: RabbitmqService,
     private readonly databaseService: DatabaseService,
+    private readonly bertSentimentService: BertSentimentService,
   ) {
     this.startTime = new Date();
   }
@@ -52,6 +54,9 @@ export class HealthController {
       );
     }
 
+    // Check BERT model status (not required for ready status)
+    const bertStatus = this.bertSentimentService.getStatus();
+
     const isReady = rabbitmqHealthy && databaseHealthy;
 
     const responseBody = {
@@ -61,6 +66,12 @@ export class HealthController {
       checks: {
         rabbitmq: rabbitmqHealthy ? 'connected' : 'disconnected',
         database: databaseHealthy ? 'connected' : 'disconnected',
+        bert: {
+          ready: bertStatus.ready,
+          provider: bertStatus.provider,
+          huggingfaceConfigured: bertStatus.huggingfaceConfigured,
+          error: bertStatus.error,
+        },
       },
     };
 
