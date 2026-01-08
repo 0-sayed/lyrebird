@@ -1,10 +1,27 @@
 {
   "name": "lyrebird",
   "version": "0.0.1",
-  "description": "",
-  "author": "",
-  "private": true,
-  "license": "UNLICENSED",
+  "description": "A distributed microservices platform for real-time sentiment analysis of Bluesky content",
+  "author": "Sayed Ashraf",
+  "private": false,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/0-sayed/lyrebird.git"
+  },
+  "homepage": "https://github.com/0-sayed/lyrebird#readme",
+  "bugs": {
+    "url": "https://github.com/0-sayed/lyrebird/issues"
+  },
+  "keywords": [
+    "sentiment-analysis",
+    "microservices",
+    "nestjs",
+    "rabbitmq",
+    "bluesky",
+    "real-time",
+    "typescript"
+  ],
   "scripts": {
     "build": "nest build",
     "build:gateway": "nest build gateway",
