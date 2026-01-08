@@ -17,7 +17,7 @@ import { BertSentimentService } from './services/bert-sentiment.service';
 
 describe('AnalysisService', () => {
   let service: AnalysisService;
-  let module: TestingModule;
+  let testingModule: TestingModule;
   let mockSentimentDataRepository: Partial<SentimentDataRepository>;
   let mockJobsRepository: Partial<JobsRepository>;
   let mockRabbitmqService: Partial<RabbitmqService>;
@@ -64,7 +64,7 @@ describe('AnalysisService', () => {
       getStatus: jest.fn().mockReturnValue({ ready: true, loading: false }),
     };
 
-    module = await Test.createTestingModule({
+    testingModule = await Test.createTestingModule({
       providers: [
         AnalysisService,
         {
@@ -77,14 +77,14 @@ describe('AnalysisService', () => {
       ],
     }).compile();
 
-    service = module.get<AnalysisService>(AnalysisService);
+    service = testingModule.get<AnalysisService>(AnalysisService);
     // Initialize module to trigger lifecycle hooks
-    await module.init();
+    await testingModule.init();
   });
 
   afterEach(async () => {
     // Close module to trigger OnModuleDestroy and clean up intervals
-    await module.close();
+    await testingModule.close();
   });
 
   it('should be defined', () => {
