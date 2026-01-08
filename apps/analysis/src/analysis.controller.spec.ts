@@ -4,10 +4,15 @@ import { AnalysisService } from './analysis.service';
 
 describe('AnalysisController', () => {
   let analysisController: AnalysisController;
+  let mockAnalysisService: {
+    processRawData: jest.Mock;
+    handleIngestionComplete: jest.Mock;
+  };
 
   beforeEach(async () => {
-    const mockAnalysisService = {
+    mockAnalysisService = {
       processRawData: jest.fn(),
+      handleIngestionComplete: jest.fn(),
     };
 
     const app: TestingModule = await Test.createTestingModule({
@@ -26,6 +31,12 @@ describe('AnalysisController', () => {
   describe('controller', () => {
     it('should be defined', () => {
       expect(analysisController).toBeDefined();
+    });
+
+    it('should have handleIngestionComplete method', () => {
+      expect(typeof analysisController.handleIngestionComplete).toBe(
+        'function',
+      );
     });
   });
 });
