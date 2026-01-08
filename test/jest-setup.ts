@@ -1,4 +1,3 @@
-// Mock uuid to avoid ESM issues in tests
-jest.mock('uuid', () => ({
-  v4: jest.fn(() => '00000000-0000-0000-0000-000000000000'),
-}));
+// Increase Jest's default timeout for NestJS module initialization and cleanup
+// Default 5s can be insufficient for complex module dependency injection
+jest.setTimeout(10000);

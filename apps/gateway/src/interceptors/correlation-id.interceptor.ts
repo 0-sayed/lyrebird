@@ -8,7 +8,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import type { Request, Response } from 'express';
 
 @Injectable()
@@ -26,7 +26,7 @@ export class CorrelationIdInterceptor implements NestInterceptor {
     const correlationId =
       (Array.isArray(correlationIdHeader)
         ? correlationIdHeader[0]
-        : correlationIdHeader) || uuidv4();
+        : correlationIdHeader) || randomUUID();
 
     // Add to request for downstream use
     request.correlationId = correlationId;

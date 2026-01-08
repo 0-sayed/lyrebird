@@ -10,5 +10,6 @@ export * from './mocks/rabbitmq.mock';
 export * from './mocks/repositories.mock';
 export * from './mocks/bluesky.mock';
 export * from './mocks/polling-scraper.mock';
+export * from './mocks/bert-sentiment.mock';
 export * from './factories/job.factory';
 export * from './utils/id.util';

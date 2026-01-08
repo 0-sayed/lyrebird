@@ -127,7 +127,8 @@ describe('IngestionService', () => {
     it('should emit raw data messages to RabbitMQ via onData callback', async () => {
       await service.processJob(mockMessage, 'test-correlation');
 
-      expect(mockRabbitmqService.emit).toHaveBeenCalledTimes(3);
+      // 3 raw data messages + 1 ingestion complete message = 4 total
+      expect(mockRabbitmqService.emit).toHaveBeenCalledTimes(4);
     });
 
     it('should emit to correct message pattern', async () => {
@@ -184,7 +185,15 @@ describe('IngestionService', () => {
 
       await service.processJob(mockMessage, 'test-correlation');
 
-      expect(mockRabbitmqService.emit).not.toHaveBeenCalled();
+      // Should still emit JOB_INGESTION_COMPLETE with totalItems: 0
+      expect(mockRabbitmqService.emit).toHaveBeenCalledTimes(1);
+      expect(mockRabbitmqService.emit).toHaveBeenCalledWith(
+        MESSAGE_PATTERNS.JOB_INGESTION_COMPLETE,
+        expect.objectContaining({
+          jobId: mockMessage.jobId,
+          totalItems: 0,
+        }),
+      );
     });
 
     it('should propagate errors from polling scraper', async () => {
@@ -231,8 +240,8 @@ describe('IngestionService', () => {
   });
 
   describe('stopJob', () => {
-    it('should call stopPollingJob on the scraper', () => {
-      service.stopJob('job-123');
+    it('should call stopPollingJob on the scraper', async () => {
+      await service.stopJob('job-123');
 
       expect(mockPollingScraperService.stopPollingJob).toHaveBeenCalledWith(
         'job-123',

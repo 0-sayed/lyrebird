@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { AnalysisService } from './analysis.service';
 import {
   SentimentDataRepository,
@@ -6,13 +7,22 @@ import {
   NewSentimentData,
 } from '@app/database';
 import { RabbitmqService } from '@app/rabbitmq';
-import { RawDataMessage, SentimentLabel, JobStatus } from '@app/shared-types';
+import {
+  RawDataMessage,
+  SentimentLabel,
+  JobStatus,
+  IngestionCompleteMessage,
+  MESSAGE_PATTERNS,
+} from '@app/shared-types';
+import { BertSentimentService } from './services/bert-sentiment.service';
 
 describe('AnalysisService', () => {
   let service: AnalysisService;
+  let testingModule: TestingModule;
   let mockSentimentDataRepository: Partial<SentimentDataRepository>;
   let mockJobsRepository: Partial<JobsRepository>;
   let mockRabbitmqService: Partial<RabbitmqService>;
+  let mockBertSentimentService: Partial<BertSentimentService>;
 
   // Helper to get the create call argument with proper typing
   const getCreateCallArg = (): NewSentimentData => {
@@ -45,19 +55,47 @@ describe('AnalysisService', () => {
       emit: jest.fn(),
     };
 
-    const module: TestingModule = await Test.createTestingModule({
+    mockBertSentimentService = {
+      analyze: jest.fn().mockResolvedValue({
+        score: 0.85,
+        label: 'positive',
+        confidence: 0.92,
+      }),
+      isReady: jest.fn().mockReturnValue(true),
+      getStatus: jest.fn().mockReturnValue({ ready: true, loading: false }),
+    };
+
+    testingModule = await Test.createTestingModule({
       providers: [
         AnalysisService,
+        {
+          provide: ConfigService,
+          useValue: {
+            get: jest.fn().mockImplementation((key: string) => {
+              // Return default values for any config keys
+              if (key === 'FAR_FUTURE_YEARS_THRESHOLD') return 10;
+              return undefined;
+            }),
+          },
+        },
         {
           provide: SentimentDataRepository,
           useValue: mockSentimentDataRepository,
         },
         { provide: JobsRepository, useValue: mockJobsRepository },
         { provide: RabbitmqService, useValue: mockRabbitmqService },
+        { provide: BertSentimentService, useValue: mockBertSentimentService },
       ],
     }).compile();
 
-    service = module.get<AnalysisService>(AnalysisService);
+    service = testingModule.get<AnalysisService>(AnalysisService);
+    // Initialize module to trigger lifecycle hooks
+    await testingModule.init();
+  });
+
+  afterEach(async () => {
+    // Close module to trigger OnModuleDestroy and clean up intervals
+    await testingModule.close();
   });
 
   it('should be defined', () => {
@@ -74,6 +112,12 @@ describe('AnalysisService', () => {
     };
 
     it('should process positive text and save to database', async () => {
+      (mockBertSentimentService.analyze as jest.Mock).mockResolvedValue({
+        score: 0.85,
+        label: 'positive',
+        confidence: 0.92,
+      });
+
       await service.processRawData(baseMessage, 'test-correlation-id');
 
       expect(mockSentimentDataRepository.create).toHaveBeenCalled();
@@ -83,6 +127,12 @@ describe('AnalysisService', () => {
     });
 
     it('should process negative text correctly', async () => {
+      (mockBertSentimentService.analyze as jest.Mock).mockResolvedValue({
+        score: 0.15,
+        label: 'negative',
+        confidence: 0.88,
+      });
+
       const negativeMessage = {
         ...baseMessage,
         textContent: 'This is terrible and I hate it',
@@ -96,6 +146,12 @@ describe('AnalysisService', () => {
     });
 
     it('should process neutral text correctly', async () => {
+      (mockBertSentimentService.analyze as jest.Mock).mockResolvedValue({
+        score: 0.5,
+        label: 'neutral',
+        confidence: 0.6,
+      });
+
       const neutralMessage = {
         ...baseMessage,
         textContent: 'This product exists',
@@ -108,6 +164,12 @@ describe('AnalysisService', () => {
     });
 
     it('should include confidence score', async () => {
+      (mockBertSentimentService.analyze as jest.Mock).mockResolvedValue({
+        score: 0.85,
+        label: 'positive',
+        confidence: 0.92,
+      });
+
       await service.processRawData(baseMessage, 'test-correlation-id');
 
       const createCall = getCreateCallArg();
@@ -142,6 +204,12 @@ describe('AnalysisService', () => {
     });
 
     it('should process text with "okay" as neutral', async () => {
+      (mockBertSentimentService.analyze as jest.Mock).mockResolvedValue({
+        score: 0.5,
+        label: 'neutral',
+        confidence: 0.55,
+      });
+
       const okayMessage = {
         ...baseMessage,
         textContent: 'The product is okay',
@@ -155,6 +223,12 @@ describe('AnalysisService', () => {
     });
 
     it('should process text with "excellent" as positive', async () => {
+      (mockBertSentimentService.analyze as jest.Mock).mockResolvedValue({
+        score: 0.9,
+        label: 'positive',
+        confidence: 0.95,
+      });
+
       const excellentMessage = {
         ...baseMessage,
         textContent: 'This is excellent!',
@@ -167,6 +241,11 @@ describe('AnalysisService', () => {
     });
 
     it('should process text with "worst" as negative', async () => {
+      (mockBertSentimentService.analyze as jest.Mock).mockResolvedValue({
+        score: 0.1,
+        label: 'negative',
+        confidence: 0.9,
+      });
       const worstMessage = {
         ...baseMessage,
         textContent: 'This is the worst product ever',
@@ -176,6 +255,134 @@ describe('AnalysisService', () => {
 
       const createCall = getCreateCallArg();
       expect(createCall.sentimentLabel).toBe(SentimentLabel.NEGATIVE);
+    });
+  });
+
+  describe('handleIngestionComplete', () => {
+    const jobId = '123e4567-e89b-12d3-a456-426614174000';
+
+    const baseMessage: RawDataMessage = {
+      jobId,
+      source: 'bluesky',
+      textContent: 'Test content',
+      publishedAt: new Date(),
+      collectedAt: new Date(),
+    };
+
+    it('should complete job when all items are already processed', async () => {
+      // First, process 3 items
+      await service.processRawData(
+        { ...baseMessage, textContent: 'Post 1' },
+        'corr-1',
+      );
+      await service.processRawData(
+        { ...baseMessage, textContent: 'Post 2' },
+        'corr-2',
+      );
+      await service.processRawData(
+        { ...baseMessage, textContent: 'Post 3' },
+        'corr-3',
+      );
+
+      // Now signal ingestion complete with 3 items
+      const ingestionComplete: IngestionCompleteMessage = {
+        jobId,
+        totalItems: 3,
+        completedAt: new Date(),
+      };
+
+      await service.handleIngestionComplete(ingestionComplete, 'corr-complete');
+
+      // Job should be marked complete
+      expect(mockJobsRepository.updateStatus).toHaveBeenCalledWith(
+        jobId,
+        JobStatus.COMPLETED,
+      );
+      expect(mockRabbitmqService.emit).toHaveBeenCalledWith(
+        MESSAGE_PATTERNS.JOB_COMPLETE,
+        expect.objectContaining({
+          jobId,
+          status: JobStatus.COMPLETED,
+        }),
+      );
+    });
+
+    it('should complete job when ingestion complete arrives first', async () => {
+      // Signal ingestion complete with 2 items expected
+      const ingestionComplete: IngestionCompleteMessage = {
+        jobId,
+        totalItems: 2,
+        completedAt: new Date(),
+      };
+
+      await service.handleIngestionComplete(ingestionComplete, 'corr-complete');
+
+      // Job should NOT be complete yet (no items processed)
+      expect(mockJobsRepository.updateStatus).not.toHaveBeenCalled();
+
+      // Now process the 2 items
+      await service.processRawData(
+        { ...baseMessage, textContent: 'Post 1' },
+        'corr-1',
+      );
+      await service.processRawData(
+        { ...baseMessage, textContent: 'Post 2' },
+        'corr-2',
+      );
+
+      // Job should be complete now
+      expect(mockJobsRepository.updateStatus).toHaveBeenCalledWith(
+        jobId,
+        JobStatus.COMPLETED,
+      );
+    });
+
+    it('should complete job immediately for zero items', async () => {
+      // Override mock to return 0 for this test (no items in DB)
+      (mockSentimentDataRepository.countByJobId as jest.Mock).mockResolvedValue(
+        0,
+      );
+      (
+        mockSentimentDataRepository.getAverageSentimentByJobId as jest.Mock
+      ).mockResolvedValue(null);
+
+      // Ingestion complete with 0 items (no results found)
+      const ingestionComplete: IngestionCompleteMessage = {
+        jobId,
+        totalItems: 0,
+        completedAt: new Date(),
+      };
+
+      await service.handleIngestionComplete(ingestionComplete, 'corr-complete');
+
+      // Job should complete immediately
+      expect(mockJobsRepository.updateStatus).toHaveBeenCalledWith(
+        jobId,
+        JobStatus.COMPLETED,
+      );
+      expect(mockRabbitmqService.emit).toHaveBeenCalledWith(
+        MESSAGE_PATTERNS.JOB_COMPLETE,
+        expect.objectContaining({
+          jobId,
+          status: JobStatus.COMPLETED,
+          dataPointsCount: 0,
+        }),
+      );
+    });
+
+    it('should track progress without completing if ingestion not signaled', async () => {
+      // Process items without ingestion complete signal
+      await service.processRawData(
+        { ...baseMessage, textContent: 'Post 1' },
+        'corr-1',
+      );
+      await service.processRawData(
+        { ...baseMessage, textContent: 'Post 2' },
+        'corr-2',
+      );
+
+      // Job should NOT be complete (we don't know expected count yet)
+      expect(mockJobsRepository.updateStatus).not.toHaveBeenCalled();
     });
   });
 });

@@ -61,8 +61,8 @@
     "pg": "^8.16.3",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "swagger-ui-express": "^5.0.1",
-    "uuid": "^13.0.0"
+    "sentiment": "^5.0.2",
+    "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
@@ -75,8 +75,8 @@
     "@types/jest": "^30.0.0",
     "@types/node": "^22.10.7",
     "@types/pg": "^8.16.0",
+    "@types/sentiment": "^5.0.4",
     "@types/supertest": "^6.0.2",
-    "@types/uuid": "^11.0.0",
     "concurrently": "^9.2.1",
     "drizzle-kit": "^0.31.8",
     "eslint": "^9.18.0",
@@ -106,10 +106,13 @@
       "ts"
     ],
     "rootDir": ".",
-    "testRegex": ".*\\.spec\\.ts$",
+    "testRegex": ".*\\.(spec|integration\\.spec)\\.ts$",
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
+    "setupFilesAfterEnv": [
+      "<rootDir>/test/jest-setup.ts"
+    ],
     "collectCoverageFrom": [
       "apps/**/*.ts",
       "libs/**/*.ts",
@@ -141,7 +144,11 @@
       "^@app/database(|/.*)$": "<rootDir>/libs/database/src/$1",
       "^@app/rabbitmq(|/.*)$": "<rootDir>/libs/rabbitmq/src/$1",
       "^@app/shared-types(|/.*)$": "<rootDir>/libs/shared-types/src/$1",
-      "^@app/bluesky(|/.*)$": "<rootDir>/libs/bluesky/src/$1"
+      "^@app/bluesky(|/.*)$": "<rootDir>/libs/bluesky/src/$1",
+      "^@app/testing(|/.*)$": "<rootDir>/libs/testing/src/$1",
+      "^@app/gateway(|/.*)$": "<rootDir>/apps/gateway/src/$1",
+      "^@app/analysis(|/.*)$": "<rootDir>/apps/analysis/src/$1",
+      "^@app/ingestion(|/.*)$": "<rootDir>/apps/ingestion/src/$1"
     }
   },
   "packageManager": "pnpm@10.23.0"
