@@ -9,6 +9,7 @@ export const MESSAGE_PATTERNS = {
   // Job lifecycle events
   JOB_START: 'job.start', // Gateway → Ingestion
   JOB_RAW_DATA: 'job.raw_data', // Ingestion → Analysis
+  JOB_INGESTION_COMPLETE: 'job.ingestion_complete', // Ingestion → Analysis (signals all data sent)
   JOB_COMPLETE: 'job.complete', // Analysis → Gateway
   JOB_FAILED: 'job.failed', // Any → Gateway
 

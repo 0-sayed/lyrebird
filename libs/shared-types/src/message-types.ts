@@ -58,6 +58,14 @@ export interface RawDataMessage {
   collectedAt: Date;
 }
 
+export interface IngestionCompleteMessage {
+  jobId: string;
+  /** Total number of items sent to analysis queue */
+  totalItems: number;
+  /** Timestamp when ingestion completed */
+  completedAt: Date;
+}
+
 export interface JobCompleteMessage {
   jobId: string;
   status: JobStatus.COMPLETED;
