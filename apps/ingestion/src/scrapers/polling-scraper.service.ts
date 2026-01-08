@@ -103,11 +103,12 @@ export class PollingScraperService {
           return; // Job is being stopped, skip this poll
         }
 
-        // Early exit check before acquiring mutex to reduce lock contention
-        // This is an optimization - the mutex still provides the authoritative check
-        if (job.isStopping) {
-          return;
-        }
+        // RACE CONDITION NOTE:
+        // The check above reads job.isStopping without holding the mutex.
+        // This is an intentional optimization to reduce lock contention.
+        // The mutex-protected check inside runExclusive provides the authoritative check.
+        // In rare cases, a poll may acquire the mutex after isStopping was set,
+        // but the mutex-protected check handles this correctly.
 
         // Use mutex to protect poll operation from race with stop
         await job.stopMutex.runExclusive(async () => {
@@ -137,6 +138,10 @@ export class PollingScraperService {
 
           // Fetch new posts since last fetch
           try {
+            // Capture fetch timestamp before the call to ensure we don't miss posts
+            // that arrive during the fetch operation
+            const fetchStartTime = new Date();
+
             await this.fetchAndProcess({
               jobId,
               prompt,
@@ -154,7 +159,12 @@ export class PollingScraperService {
                 }
               },
             });
+
+            // Update lastFetchTime after successful fetch to ensure subsequent
+            // polls only request new posts (issue #18 fix)
+            lastFetchTime = fetchStartTime;
           } catch (error) {
+            // Don't update lastFetchTime on error - retry from same point next poll
             this.logger.error(
               `[${correlationId}] Unexpected poll error: ${error instanceof Error ? error.message : 'Unknown error'}`,
             );
