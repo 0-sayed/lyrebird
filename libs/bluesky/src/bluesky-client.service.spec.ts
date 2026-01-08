@@ -17,7 +17,9 @@ const mockAgentInstance = {
       },
     },
   },
-  session: undefined as { did: string; handle: string } | undefined,
+  session: undefined as
+    | { did: string; handle: string; accessJwt?: string }
+    | undefined,
 };
 
 jest.mock('@atproto/api', () => {
@@ -28,6 +30,7 @@ jest.mock('@atproto/api', () => {
 
 describe('BlueskyClientService', () => {
   let service: BlueskyClientService;
+  let module: TestingModule;
 
   const mockConfig = {
     BLUESKY_IDENTIFIER: 'test.bsky.social',
@@ -40,7 +43,7 @@ describe('BlueskyClientService', () => {
     mockSearchPosts.mockReset();
     mockAgentInstance.session = undefined;
 
-    const module: TestingModule = await Test.createTestingModule({
+    module = await Test.createTestingModule({
       providers: [
         BlueskyClientService,
         {
@@ -55,9 +58,13 @@ describe('BlueskyClientService', () => {
     }).compile();
 
     service = module.get<BlueskyClientService>(BlueskyClientService);
+    // Initialize module to trigger lifecycle hooks
+    await module.init();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    // Close module to trigger cleanup
+    await module.close();
     jest.clearAllMocks();
   });
 
@@ -114,7 +121,16 @@ describe('BlueskyClientService', () => {
       mockAgentInstance.session = {
         did: 'test-did',
         handle: 'test.bsky.social',
+        accessJwt: 'test-jwt-token',
       };
+      // Set session expiry to avoid re-authentication
+      // Using Reflect to set private properties for testing
+      Reflect.set(
+        service,
+        'sessionExpiresAt',
+        new Date(Date.now() + 2 * 60 * 60 * 1000),
+      );
+      Reflect.set(service, 'isAuthenticated', true);
 
       // Second call - should not authenticate again
       await service.searchPosts('test2');
@@ -311,12 +327,13 @@ describe('BlueskyClientService', () => {
 
 describe('BlueskyClientService without credentials', () => {
   let service: BlueskyClientService;
+  let module: TestingModule;
 
   beforeEach(async () => {
     mockLogin.mockReset();
     mockSearchPosts.mockReset();
 
-    const module: TestingModule = await Test.createTestingModule({
+    module = await Test.createTestingModule({
       providers: [
         BlueskyClientService,
         {
@@ -329,6 +346,11 @@ describe('BlueskyClientService without credentials', () => {
     }).compile();
 
     service = module.get<BlueskyClientService>(BlueskyClientService);
+    await module.init();
+  });
+
+  afterEach(async () => {
+    await module.close();
   });
 
   it('should report not ready when credentials missing', () => {
