@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { AnalysisService } from './analysis.service';
 import {
   SentimentDataRepository,
@@ -67,6 +68,16 @@ describe('AnalysisService', () => {
     testingModule = await Test.createTestingModule({
       providers: [
         AnalysisService,
+        {
+          provide: ConfigService,
+          useValue: {
+            get: jest.fn().mockImplementation((key: string) => {
+              // Return default values for any config keys
+              if (key === 'FAR_FUTURE_YEARS_THRESHOLD') return 10;
+              return undefined;
+            }),
+          },
+        },
         {
           provide: SentimentDataRepository,
           useValue: mockSentimentDataRepository,
