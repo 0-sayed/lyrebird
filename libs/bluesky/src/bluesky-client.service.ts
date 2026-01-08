@@ -12,6 +12,11 @@ export class BlueskyClientService implements OnModuleInit {
   private isAuthenticated = false;
   private sessionExpiresAt?: Date;
 
+  // Conservative fallback session duration if JWT decoding fails
+  private static readonly DEFAULT_SESSION_DURATION_MS = 2 * 60 * 60 * 1000; // 2 hours
+  // API timeout for search requests
+  private static readonly API_TIMEOUT_MS = 15000;
+
   constructor(private readonly configService: ConfigService) {
     // Initialize agent pointing to Bluesky's main PDS
     this.agent = new AtpAgent({
@@ -34,6 +39,86 @@ export class BlueskyClientService implements OnModuleInit {
   async onModuleInit(): Promise<void> {
     // Optionally authenticate on startup
     // await this.ensureAuthenticated();
+  }
+
+  /**
+   * Extract expiry timestamp from a JWT's exp claim.
+   * Falls back to a conservative default if parsing fails.
+   *
+   * @param jwt - The JWT string to parse
+   * @returns Date when the session expires
+   */
+  private extractJwtExpiry(jwt: string | undefined): Date {
+    if (!jwt) {
+      this.logger.warn(
+        'No JWT provided for expiry extraction, using default duration',
+      );
+      return new Date(
+        Date.now() + BlueskyClientService.DEFAULT_SESSION_DURATION_MS,
+      );
+    }
+
+    try {
+      // JWT format: header.payload.signature
+      // We only need the payload (second part)
+      const parts = jwt.split('.');
+      if (parts.length !== 3 || !parts[1]) {
+        this.logger.warn('Invalid JWT format, using default session duration');
+        return new Date(
+          Date.now() + BlueskyClientService.DEFAULT_SESSION_DURATION_MS,
+        );
+      }
+
+      // Decode base64url payload
+      const payloadB64 = parts[1];
+      // Handle base64url encoding (replace - with +, _ with /)
+      const payloadJson = Buffer.from(
+        payloadB64.replace(/-/g, '+').replace(/_/g, '/'),
+        'base64',
+      ).toString('utf-8');
+
+      const payload = JSON.parse(payloadJson) as { exp?: number };
+
+      if (typeof payload.exp !== 'number') {
+        this.logger.warn(
+          'JWT payload missing exp claim, using default session duration',
+        );
+        return new Date(
+          Date.now() + BlueskyClientService.DEFAULT_SESSION_DURATION_MS,
+        );
+      }
+
+      // JWT exp is in seconds since epoch, convert to milliseconds
+      const expiryDate = new Date(payload.exp * 1000);
+
+      // Sanity check: if expiry is in the past or too far in the future (>30 days),
+      // use default duration instead
+      const now = Date.now();
+      const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+      if (expiryDate.getTime() <= now) {
+        this.logger.warn('JWT expiry is in the past, using default duration');
+        return new Date(now + BlueskyClientService.DEFAULT_SESSION_DURATION_MS);
+      }
+      if (expiryDate.getTime() > now + thirtyDaysMs) {
+        this.logger.warn(
+          'JWT expiry is unexpectedly far in the future (>30 days), using default duration',
+        );
+        return new Date(now + BlueskyClientService.DEFAULT_SESSION_DURATION_MS);
+      }
+
+      this.logger.debug(
+        `JWT expires at: ${expiryDate.toISOString()} (${Math.round((expiryDate.getTime() - now) / 60000)} minutes from now)`,
+      );
+      return expiryDate;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.warn(
+        `Failed to parse JWT expiry (${message}), using default session duration`,
+      );
+      return new Date(
+        Date.now() + BlueskyClientService.DEFAULT_SESSION_DURATION_MS,
+      );
+    }
   }
 
   /**
@@ -78,9 +163,11 @@ export class BlueskyClientService implements OnModuleInit {
 
       this.isAuthenticated = true;
 
-      // Set session expiry (AT Protocol sessions typically last 2-4 hours)
-      // Conservative estimate: 2 hours
-      this.sessionExpiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000);
+      // Extract session expiry from JWT's exp claim
+      // AT Protocol JWTs contain a standard exp (expiration) claim
+      this.sessionExpiresAt = this.extractJwtExpiry(
+        this.agent.session?.accessJwt,
+      );
 
       // Clear credentials from memory after successful authentication
       // Re-authentication will require re-reading from config
@@ -109,23 +196,23 @@ export class BlueskyClientService implements OnModuleInit {
   ): Promise<SearchPostsResult> {
     await this.ensureAuthenticated();
 
-    // Use AbortController to properly handle timeout and prevent race conditions
-    // between Promise.race resolution and timeout callback execution
-    const abortController = new AbortController();
+    // Use a simple timeout Promise.race; the underlying Bluesky client call does not
+    // currently accept an AbortSignal, so aborting would not cancel the request.
+    // This timeout ensures we don't wait indefinitely for unresponsive API calls.
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
-    let isResolved = false;
 
     try {
       this.logger.debug(`Searching Bluesky for: "${query}"`);
 
-      // Set up timeout with abort signal
+      // Set up timeout promise
       const timeoutPromise = new Promise<never>((_, reject) => {
         timeoutId = setTimeout(() => {
-          if (!isResolved) {
-            abortController.abort();
-            reject(new Error('Bluesky API request timed out after 15 seconds'));
-          }
-        }, 15000);
+          reject(
+            new Error(
+              `Bluesky API request timed out after ${BlueskyClientService.API_TIMEOUT_MS}ms`,
+            ),
+          );
+        }, BlueskyClientService.API_TIMEOUT_MS);
       });
 
       const response = await Promise.race([
@@ -141,8 +228,11 @@ export class BlueskyClientService implements OnModuleInit {
         timeoutPromise,
       ]);
 
-      // Mark as resolved to prevent timeout callback from executing
-      isResolved = true;
+      // Clear timeout immediately to prevent it from firing
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = undefined;
+      }
 
       const posts: BlueskyPost[] = response.data.posts.reduce<BlueskyPost[]>(
         (acc, post) => {
@@ -209,7 +299,6 @@ export class BlueskyClientService implements OnModuleInit {
         hitsTotal: response.data.hitsTotal,
       };
     } catch (error) {
-      isResolved = true; // Prevent timeout callback from running after error
       const message = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error(`Bluesky search failed: ${message}`);
       throw new Error(`Bluesky search failed: ${message}`);
@@ -278,9 +367,16 @@ export class BlueskyClientService implements OnModuleInit {
     ) {
       return true;
     }
-    // Otherwise, check if we can authenticate (identifier is required,
-    // password will be fetched from config if needed during ensureAuthenticated)
-    return Boolean(this.identifier);
+    // Otherwise, check if we can authenticate
+    // Both identifier and password must be available (password is fetched from config if cleared)
+    if (!this.identifier) {
+      return false;
+    }
+    // Check if password is available (either in memory or in ConfigService)
+    const hasPassword =
+      !!this.password ||
+      !!this.configService.get<string>('BLUESKY_APP_PASSWORD', '');
+    return hasPassword;
   }
 
   /**
