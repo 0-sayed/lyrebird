@@ -35,6 +35,7 @@ export const RABBITMQ_CONSTANTS = {
 export const PATTERN_TO_QUEUE: Record<string, string> = {
   'job.start': RABBITMQ_CONSTANTS.QUEUES.INGESTION,
   'job.raw_data': RABBITMQ_CONSTANTS.QUEUES.ANALYSIS,
+  'job.ingestion_complete': RABBITMQ_CONSTANTS.QUEUES.ANALYSIS,
   'job.complete': RABBITMQ_CONSTANTS.QUEUES.GATEWAY,
   'job.failed': RABBITMQ_CONSTANTS.QUEUES.GATEWAY,
   'health.check': RABBITMQ_CONSTANTS.QUEUES.GATEWAY,
