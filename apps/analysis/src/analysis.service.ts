@@ -81,7 +81,7 @@ export class AnalysisService implements OnModuleInit, OnModuleDestroy {
     // Prevent the interval from keeping the process alive during testing/graceful shutdown
     // Use try-catch to handle environments where unref() may not be available
     try {
-      this.cleanupIntervalId.unref?.();
+      this.cleanupIntervalId.unref();
     } catch {
       // Silently ignore if unref() is not available in this environment
     }
