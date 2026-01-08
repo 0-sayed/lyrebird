@@ -4,6 +4,7 @@ import {
   OnModuleInit,
   OnModuleDestroy,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { RabbitmqService } from '@app/rabbitmq';
 import { SentimentDataRepository } from '@app/database/repositories/sentiment-data.repository';
 import { JobsRepository } from '@app/database/repositories/jobs.repository';
@@ -22,6 +23,10 @@ import { BertSentimentService } from './services/bert-sentiment.service';
 // TTL for job tracking entries (1 hour) - cleanup stale entries to prevent memory leak
 const JOB_TRACKER_TTL_MS = 60 * 60 * 1000;
 
+// Absolute maximum TTL for any tracker (24 hours) - prevents indefinite memory growth
+// for jobs that receive ingestionComplete but never finish processing
+const JOB_TRACKER_MAX_TTL_MS = 24 * 60 * 60 * 1000;
+
 // Cleanup interval (15 minutes)
 const CLEANUP_INTERVAL_MS = 15 * 60 * 1000;
 
@@ -30,11 +35,14 @@ const CLEANUP_INTERVAL_MS = 15 * 60 * 1000;
  * - processed: number of items we've analyzed
  * - expected: total items to expect (set by JOB_INGESTION_COMPLETE)
  * - ingestionComplete: whether we've received the ingestion complete signal
+ * - createdAt: timestamp when tracker was created (for absolute TTL)
+ * - lastUpdated: timestamp of last activity (for staleness check)
  */
 interface JobTracker {
   processed: number;
   expected: number | null; // null until JOB_INGESTION_COMPLETE is received
   ingestionComplete: boolean;
+  createdAt: number;
   lastUpdated: number;
 }
 
@@ -52,7 +60,11 @@ export class AnalysisService implements OnModuleInit, OnModuleDestroy {
   // Cleanup interval handle - stored for proper cleanup on module destroy
   private cleanupIntervalId: NodeJS.Timeout | null = null;
 
+  // Default far-future date threshold (10 years) - can be overridden via environment
+  private static readonly DEFAULT_FAR_FUTURE_YEARS = 10;
+
   constructor(
+    private readonly configService: ConfigService,
     private readonly rabbitmqService: RabbitmqService,
     private readonly sentimentDataRepository: SentimentDataRepository,
     private readonly jobsRepository: JobsRepository,
@@ -63,19 +75,15 @@ export class AnalysisService implements OnModuleInit, OnModuleDestroy {
    * Start cleanup interval when module initializes
    */
   onModuleInit(): void {
-    this.cleanupIntervalId = setInterval(
-      () => this.cleanupStaleTrackers(),
-      CLEANUP_INTERVAL_MS,
-    );
+    this.cleanupIntervalId = setInterval(() => {
+      this.cleanupStaleTrackers();
+    }, CLEANUP_INTERVAL_MS);
     // Prevent the interval from keeping the process alive during testing/graceful shutdown
-    // Guard against environments where setInterval returns numeric IDs without unref()
-    if (
-      this.cleanupIntervalId &&
-      typeof this.cleanupIntervalId === 'object' &&
-      'unref' in this.cleanupIntervalId &&
-      typeof this.cleanupIntervalId.unref === 'function'
-    ) {
-      this.cleanupIntervalId.unref();
+    // Use try-catch to handle environments where unref() may not be available
+    try {
+      this.cleanupIntervalId.unref?.();
+    } catch {
+      // Silently ignore if unref() is not available in this environment
     }
   }
 
@@ -95,17 +103,29 @@ export class AnalysisService implements OnModuleInit, OnModuleDestroy {
    * Clean up stale job tracking entries that haven't been updated recently
    * Prevents memory leak from jobs that never complete
    *
-   * Note: Only removes trackers that haven't received ingestion complete signal
-   * to avoid losing state for long-running jobs that are still active
+   * Cleanup criteria:
+   * 1. Trackers without ingestionComplete that haven't been updated within TTL
+   * 2. Any tracker that exceeds the absolute maximum TTL (prevents indefinite memory growth
+   *    for jobs that receive ingestionComplete but never finish processing, e.g., due to
+   *    consumer crash or poisoned messages)
    */
   private cleanupStaleTrackers(): void {
     const now = Date.now();
     for (const [jobId, tracker] of this.jobProcessingTracker.entries()) {
       const isStale = now - tracker.lastUpdated > JOB_TRACKER_TTL_MS;
-      // Only cleanup if stale AND ingestion hasn't completed yet
-      // (completed ingestion means job is actively being processed)
-      if (isStale && !tracker.ingestionComplete) {
-        this.logger.debug(`Cleaning up stale tracker for job ${jobId}`);
+      const exceedsMaxTtl = now - tracker.createdAt > JOB_TRACKER_MAX_TTL_MS;
+
+      // Cleanup if:
+      // - Stale AND ingestion hasn't completed yet (original behavior)
+      // - OR exceeds absolute max TTL (prevents indefinite memory growth)
+      if ((isStale && !tracker.ingestionComplete) || exceedsMaxTtl) {
+        if (exceedsMaxTtl && tracker.ingestionComplete) {
+          this.logger.warn(
+            `Cleaning up abandoned tracker for job ${jobId}: ingestion complete but processing never finished (${tracker.processed}/${tracker.expected ?? '?'} items processed)`,
+          );
+        } else {
+          this.logger.debug(`Cleaning up stale tracker for job ${jobId}`);
+        }
         this.jobProcessingTracker.delete(jobId);
         this.jobMutexes.delete(jobId);
       }
@@ -157,9 +177,15 @@ export class AnalysisService implements OnModuleInit, OnModuleDestroy {
       const publishedAtDate = new Date(message.publishedAt);
       const collectedAtDate = new Date(message.collectedAt);
       const now = new Date();
+      // Far-future threshold is configurable via FAR_FUTURE_YEARS_THRESHOLD environment variable
+      // Default is 10 years to catch obvious data corruption while allowing legitimate future dates
+      const farFutureYears = this.configService.get<number>(
+        'FAR_FUTURE_YEARS_THRESHOLD',
+        AnalysisService.DEFAULT_FAR_FUTURE_YEARS,
+      );
       const farFutureThreshold = new Date(
-        now.getTime() + 365 * 24 * 60 * 60 * 1000,
-      ); // 1 year from now
+        now.getTime() + farFutureYears * 365 * 24 * 60 * 60 * 1000,
+      );
 
       // Validate dates to prevent Invalid Date objects and far-future dates (data corruption)
       if (isNaN(publishedAtDate.getTime())) {
@@ -237,9 +263,15 @@ export class AnalysisService implements OnModuleInit, OnModuleDestroy {
     const result = await this.bertSentimentService.analyze(text);
 
     // Normalize label to lowercase to handle case variations from different BERT implementations
-    const normalizedLabel = result.label.toLowerCase();
+    const normalizedLabel = result.label.toLowerCase() as
+      | 'positive'
+      | 'negative'
+      | 'neutral';
 
     // Map the string label to SentimentLabel enum
+    // Note: BertSentimentService declares label as 'positive' | 'negative' | 'neutral',
+    // so the default case should never be hit. We use exhaustive checking here to
+    // ensure TypeScript catches any future additions to the label type.
     let sentimentLabel: SentimentLabel;
     switch (normalizedLabel) {
       case 'positive':
@@ -251,11 +283,15 @@ export class AnalysisService implements OnModuleInit, OnModuleDestroy {
       case 'neutral':
         sentimentLabel = SentimentLabel.NEUTRAL;
         break;
-      default:
-        this.logger.warn(
-          `Unknown sentiment label '${result.label}', defaulting to NEUTRAL`,
+      default: {
+        // Exhaustive check: this should never be reached if all label cases are handled
+        const _exhaustiveCheck: never = normalizedLabel;
+        this.logger.error(
+          `Unexpected sentiment label '${result.label}' - this indicates a type mismatch with BertSentimentService`,
+          { unexpectedLabel: _exhaustiveCheck },
         );
         sentimentLabel = SentimentLabel.NEUTRAL;
+      }
     }
 
     return {
@@ -271,11 +307,13 @@ export class AnalysisService implements OnModuleInit, OnModuleDestroy {
   private getOrCreateTracker(jobId: string): JobTracker {
     let tracker = this.jobProcessingTracker.get(jobId);
     if (!tracker) {
+      const now = Date.now();
       tracker = {
         processed: 0,
         expected: null, // Unknown until JOB_INGESTION_COMPLETE is received
         ingestionComplete: false,
-        lastUpdated: Date.now(),
+        createdAt: now,
+        lastUpdated: now,
       };
       this.jobProcessingTracker.set(jobId, tracker);
     }
@@ -343,6 +381,10 @@ export class AnalysisService implements OnModuleInit, OnModuleDestroy {
   /**
    * Check if job is complete and trigger completion if so
    * Must be called within mutex lock
+   *
+   * Error Handling: Errors thrown from completeJob() are caught, logged, and re-thrown.
+   * The mutex.runExclusive() in the caller will properly release the lock even on error.
+   * The tracker is preserved on failure to allow retry on subsequent message processing.
    */
   private async checkAndCompleteJob(
     jobId: string,
@@ -352,6 +394,11 @@ export class AnalysisService implements OnModuleInit, OnModuleDestroy {
     // Job is complete when:
     // 1. We've received JOB_INGESTION_COMPLETE (ingestionComplete = true)
     // 2. We've processed all expected items (processed >= expected)
+    //
+    // Note: Zero-item jobs (expected = 0) are handled correctly here:
+    // - When expected = 0 and processed = 0, the condition 0 >= 0 evaluates to true
+    // - This allows jobs with no items to complete immediately after receiving
+    //   JOB_INGESTION_COMPLETE with totalItems = 0
     const isComplete =
       tracker.ingestionComplete &&
       tracker.expected !== null &&
@@ -365,6 +412,7 @@ export class AnalysisService implements OnModuleInit, OnModuleDestroy {
         this.jobMutexes.delete(jobId);
       } catch (error) {
         // Preserve tracker for potential retry - don't delete on failure
+        // The mutex will be properly released by runExclusive() even though we re-throw
         this.logger.error(
           `[${correlationId}] Failed to complete job, tracker preserved for retry`,
           error instanceof Error ? error.stack : String(error),
