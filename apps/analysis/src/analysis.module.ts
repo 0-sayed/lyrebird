@@ -5,7 +5,7 @@ import { AnalysisService } from './analysis.service';
 import { DatabaseModule } from '@app/database/database.module';
 import { RabbitmqModule } from '@app/rabbitmq';
 import { HealthModule } from './health/health.module';
-import { BertSentimentService } from './services/bert-sentiment.service';
+import { SentimentModule } from './services/sentiment.module';
 
 @Module({
   imports: [
@@ -13,9 +13,10 @@ import { BertSentimentService } from './services/bert-sentiment.service';
     DatabaseModule,
     RabbitmqModule,
     HealthModule,
+    SentimentModule,
   ],
   controllers: [AnalysisController],
-  providers: [AnalysisService, BertSentimentService],
-  exports: [BertSentimentService],
+  providers: [AnalysisService],
+  exports: [SentimentModule],
 })
 export class AnalysisModule {}

@@ -2,11 +2,10 @@ import { Module } from '@nestjs/common';
 import { HealthController } from './health.controller';
 import { RabbitmqModule } from '@app/rabbitmq';
 import { DatabaseModule } from '@app/database/database.module';
-import { BertSentimentService } from '../services/bert-sentiment.service';
+import { SentimentModule } from '../services/sentiment.module';
 
 @Module({
-  imports: [RabbitmqModule, DatabaseModule],
+  imports: [RabbitmqModule, DatabaseModule, SentimentModule],
   controllers: [HealthController],
-  providers: [BertSentimentService],
 })
 export class HealthModule {}
