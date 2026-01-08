@@ -103,6 +103,12 @@ export class PollingScraperService {
           return; // Job is being stopped, skip this poll
         }
 
+        // Early exit check before acquiring mutex to reduce lock contention
+        // This is an optimization - the mutex still provides the authoritative check
+        if (job.isStopping) {
+          return;
+        }
+
         // Use mutex to protect poll operation from race with stop
         await job.stopMutex.runExclusive(async () => {
           if (job.isStopping) {
