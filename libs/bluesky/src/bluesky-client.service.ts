@@ -196,27 +196,15 @@ export class BlueskyClientService implements OnModuleInit {
   ): Promise<SearchPostsResult> {
     await this.ensureAuthenticated();
 
-    // Use a simple timeout Promise.race; the underlying Bluesky client call does not
-    // currently accept an AbortSignal, so aborting would not cancel the request.
-    // This timeout ensures we don't wait indefinitely for unresponsive API calls.
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-
     try {
       this.logger.debug(`Searching Bluesky for: "${query}"`);
 
-      // Set up timeout promise
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(() => {
-          reject(
-            new Error(
-              `Bluesky API request timed out after ${BlueskyClientService.API_TIMEOUT_MS}ms`,
-            ),
-          );
-        }, BlueskyClientService.API_TIMEOUT_MS);
-      });
+      // Use AbortSignal.timeout to properly cancel the underlying HTTP request
+      // when the timeout expires, rather than just racing with the promise.
+      const signal = AbortSignal.timeout(BlueskyClientService.API_TIMEOUT_MS);
 
-      const response = await Promise.race([
-        this.agent.app.bsky.feed.searchPosts({
+      const response = await this.agent.app.bsky.feed.searchPosts(
+        {
           q: query,
           limit: options.limit ?? 25,
           cursor: options.cursor,
@@ -224,15 +212,9 @@ export class BlueskyClientService implements OnModuleInit {
           since: options.since,
           until: options.until,
           lang: options.lang,
-        }),
-        timeoutPromise,
-      ]);
-
-      // Clear timeout immediately to prevent it from firing
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = undefined;
-      }
+        },
+        { signal },
+      );
 
       const posts: BlueskyPost[] = response.data.posts.reduce<BlueskyPost[]>(
         (acc, post) => {
@@ -299,14 +281,16 @@ export class BlueskyClientService implements OnModuleInit {
         hitsTotal: response.data.hitsTotal,
       };
     } catch (error) {
+      // Handle abort/timeout errors specifically
+      if (error instanceof Error && error.name === 'TimeoutError') {
+        const message = `Bluesky API request timed out after ${BlueskyClientService.API_TIMEOUT_MS}ms`;
+        this.logger.error(message);
+        throw new Error(message);
+      }
+
       const message = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error(`Bluesky search failed: ${message}`);
       throw new Error(`Bluesky search failed: ${message}`);
-    } finally {
-      // Always clear the timeout to prevent keeping the Node.js process alive
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
     }
   }
 

@@ -236,15 +236,20 @@ describe('BlueskyClientService', () => {
         lang: 'en',
       });
 
-      expect(mockSearchPosts).toHaveBeenCalledWith({
-        q: 'test',
-        limit: 50,
-        cursor: undefined,
-        sort: 'latest',
-        since: undefined,
-        until: undefined,
-        lang: 'en',
-      });
+      expect(mockSearchPosts).toHaveBeenCalledWith(
+        {
+          q: 'test',
+          limit: 50,
+          cursor: undefined,
+          sort: 'latest',
+          since: undefined,
+          until: undefined,
+          lang: 'en',
+        },
+        expect.objectContaining({
+          signal: expect.any(AbortSignal) as unknown,
+        }),
+      );
     });
 
     it('should use default limit of 25', async () => {
@@ -256,6 +261,9 @@ describe('BlueskyClientService', () => {
 
       expect(mockSearchPosts).toHaveBeenCalledWith(
         expect.objectContaining({ limit: 25 }),
+        expect.objectContaining({
+          signal: expect.any(AbortSignal) as unknown,
+        }),
       );
     });
 
@@ -295,6 +303,9 @@ describe('BlueskyClientService', () => {
       expect(mockSearchPosts).toHaveBeenCalledWith(
         expect.objectContaining({
           since: '2024-01-15T10:00:00.000Z',
+        }),
+        expect.objectContaining({
+          signal: expect.any(AbortSignal) as unknown,
         }),
       );
     });
