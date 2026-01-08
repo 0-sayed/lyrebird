@@ -328,7 +328,7 @@ export class BertSentimentService {
     }
 
     // HuggingFace returns [[{label, score}, ...]]
-    if (!response || !response[0] || response[0].length === 0) {
+    if (!response[0] || response[0].length === 0) {
       throw new Error('Empty response from HuggingFace API');
     }
 
