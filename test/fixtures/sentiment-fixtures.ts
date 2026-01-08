@@ -114,16 +114,23 @@ export const EDGE_CASE_TEXTS = {
 
 /**
  * Factory function to create RawDataMessage for testing
+ *
+ * Uses relative dates (1 day ago) to ensure test data remains valid
+ * regardless of the current date and won't trigger far-future validation.
  */
 export function createRawDataMessage(
   overrides: Partial<RawDataMessage> = {},
 ): RawDataMessage {
+  // Use a date 1 day in the past to ensure it's always valid
+  // and won't trigger far-future validation as time progresses
+  const defaultDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
   return {
     jobId: overrides.jobId ?? '00000000-0000-0000-0000-000000000001',
     source: overrides.source ?? 'reddit',
     textContent: overrides.textContent ?? 'Default test content for analysis',
-    publishedAt: overrides.publishedAt ?? new Date('2026-01-01T00:00:00Z'),
-    collectedAt: overrides.collectedAt ?? new Date('2026-01-01T00:00:00Z'),
+    publishedAt: overrides.publishedAt ?? defaultDate,
+    collectedAt: overrides.collectedAt ?? defaultDate,
     sourceUrl: overrides.sourceUrl,
     authorName: overrides.authorName,
     upvotes: overrides.upvotes,
