@@ -124,7 +124,7 @@ describe('PollingScraperService', () => {
       expect(receivedData[0].source).toBe('bluesky');
 
       // Cleanup
-      service.stopPollingJob('job-123');
+      await service.stopPollingJob('job-123');
     });
 
     it('should register as active job', async () => {
@@ -152,7 +152,7 @@ describe('PollingScraperService', () => {
       expect(service.getActiveJobCount()).toBe(1);
 
       // Cleanup
-      service.stopPollingJob('job-123');
+      await service.stopPollingJob('job-123');
     });
 
     it('should map post data correctly to RawDataMessage', async () => {
@@ -209,7 +209,7 @@ describe('PollingScraperService', () => {
       expect(rawData.publishedAt).toBeInstanceOf(Date);
       expect(rawData.collectedAt).toBeInstanceOf(Date);
 
-      service.stopPollingJob('job-123');
+      await service.stopPollingJob('job-123');
     });
 
     it('should use handle as author name when displayName is not available', async () => {
@@ -247,7 +247,7 @@ describe('PollingScraperService', () => {
 
       expect(receivedData[0].authorName).toBe('user.bsky.social');
 
-      service.stopPollingJob('job-123');
+      await service.stopPollingJob('job-123');
     });
 
     it('should handle empty initial results', async () => {
@@ -275,7 +275,7 @@ describe('PollingScraperService', () => {
       expect(mockSearchPostsSince).toHaveBeenCalledTimes(1);
       expect(onData).not.toHaveBeenCalled();
 
-      service.stopPollingJob('job-123');
+      await service.stopPollingJob('job-123');
     });
 
     it('should poll at the specified interval', async () => {
@@ -311,7 +311,7 @@ describe('PollingScraperService', () => {
       await jest.advanceTimersByTimeAsync(5000);
       expect(mockSearchPostsSince).toHaveBeenCalledTimes(3);
 
-      service.stopPollingJob('job-123');
+      await service.stopPollingJob('job-123');
     });
 
     it('should call onComplete when max duration is reached', async () => {
@@ -322,6 +322,8 @@ describe('PollingScraperService', () => {
       });
 
       jest.useFakeTimers();
+      const startTime = Date.now();
+      jest.setSystemTime(startTime);
 
       const onComplete = jest.fn();
 
@@ -337,11 +339,14 @@ describe('PollingScraperService', () => {
 
       expect(onComplete).not.toHaveBeenCalled();
 
-      // Advance past max duration
-      await jest.advanceTimersByTimeAsync(11000);
+      // Advance time past max duration
+      jest.setSystemTime(startTime + 11000);
+      await jest.runAllTimersAsync();
 
       expect(onComplete).toHaveBeenCalledTimes(1);
       expect(service.isJobActive('job-123')).toBe(false);
+
+      jest.useRealTimers();
     });
 
     it('should stop polling when AbortSignal is triggered', async () => {
@@ -352,6 +357,7 @@ describe('PollingScraperService', () => {
       });
 
       jest.useFakeTimers();
+      jest.setSystemTime(Date.now());
 
       const abortController = new AbortController();
       const onComplete = jest.fn();
@@ -373,9 +379,11 @@ describe('PollingScraperService', () => {
       abortController.abort();
 
       // Advance time to trigger poll check
-      await jest.advanceTimersByTimeAsync(5000);
+      await jest.runAllTimersAsync();
 
       expect(service.isJobActive('job-123')).toBe(false);
+
+      jest.useRealTimers();
     });
 
     it('should continue polling despite fetch errors', async () => {
@@ -413,7 +421,7 @@ describe('PollingScraperService', () => {
       // Job should still be active
       expect(service.isJobActive('job-123')).toBe(true);
 
-      service.stopPollingJob('job-123');
+      await service.stopPollingJob('job-123');
     });
 
     it('should handle multiple concurrent jobs', async () => {
@@ -443,7 +451,7 @@ describe('PollingScraperService', () => {
       expect(service.isJobActive('job-2')).toBe(true);
       expect(service.isJobActive('job-3')).toBe(true);
 
-      service.stopPollingJob('job-2');
+      await service.stopPollingJob('job-2');
 
       expect(service.getActiveJobCount()).toBe(2);
       expect(service.isJobActive('job-1')).toBe(true);
@@ -451,8 +459,8 @@ describe('PollingScraperService', () => {
       expect(service.isJobActive('job-3')).toBe(true);
 
       // Cleanup
-      service.stopPollingJob('job-1');
-      service.stopPollingJob('job-3');
+      await service.stopPollingJob('job-1');
+      await service.stopPollingJob('job-3');
     });
   });
 
@@ -479,15 +487,15 @@ describe('PollingScraperService', () => {
       await service.startPollingJob(config);
       expect(service.isJobActive('job-123')).toBe(true);
 
-      service.stopPollingJob('job-123');
+      await service.stopPollingJob('job-123');
       expect(service.isJobActive('job-123')).toBe(false);
       expect(service.getActiveJobCount()).toBe(0);
     });
 
-    it('should handle stopping non-existent job gracefully', () => {
-      expect(() => {
-        service.stopPollingJob('non-existent');
-      }).not.toThrow();
+    it('should handle stopping non-existent job gracefully', async () => {
+      await expect(async () => {
+        await service.stopPollingJob('non-existent');
+      }).resolves.not.toThrow();
     });
 
     it('should not poll after being stopped', async () => {
@@ -513,7 +521,7 @@ describe('PollingScraperService', () => {
       expect(mockSearchPostsSince).toHaveBeenCalledTimes(1);
 
       // Stop the job
-      service.stopPollingJob('job-123');
+      await service.stopPollingJob('job-123');
 
       // Advance time - should NOT trigger more polls
       await jest.advanceTimersByTimeAsync(10000);

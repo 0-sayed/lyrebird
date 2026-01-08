@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { BlueskyClientService, BlueskyPost } from '@app/bluesky';
 import { RawDataMessage } from '@app/shared-types';
+import { Mutex } from 'async-mutex';
 
 export interface PollingConfig {
   jobId: string;
@@ -22,6 +23,8 @@ interface ActiveJob {
   pollInterval: NodeJS.Timeout;
   onComplete: () => void;
   seenPostUris: Set<string>;
+  stopMutex: Mutex; // Prevent race condition when stopping
+  isStopping: boolean; // Track if job is being stopped
 }
 
 @Injectable()
@@ -55,7 +58,7 @@ export class PollingScraperService {
       this.logger.warn(
         `[${correlationId}] Job ${jobId} already exists, stopping existing job before starting new one`,
       );
-      this.stopPollingJob(jobId);
+      await this.stopPollingJob(jobId);
     }
 
     // Track seen posts to prevent duplicate processing
@@ -95,60 +98,96 @@ export class PollingScraperService {
     // Set up polling interval with proper async handling
     const pollInterval = setInterval(() => {
       void (async () => {
-        // Check if job should end
-        if (Date.now() - startTime >= maxDurationMs) {
-          this.logger.log(
-            `[${correlationId}] Job duration reached, stopping polling`,
-          );
-          this.stopPollingJob(jobId);
-          return;
+        const job = this.activeJobs.get(jobId);
+        if (!job || job.isStopping) {
+          return; // Job is being stopped, skip this poll
         }
 
-        // Check if cancelled
-        if (signal?.aborted) {
-          this.logger.log(`[${correlationId}] Job cancelled, stopping polling`);
-          this.stopPollingJob(jobId);
-          return;
-        }
+        // Use mutex to protect poll operation from race with stop
+        await job.stopMutex.runExclusive(async () => {
+          if (job.isStopping) {
+            return; // Job stopped during lock acquisition
+          }
 
-        // Fetch new posts since last fetch
-        try {
-          await this.fetchAndProcess({
-            jobId,
-            prompt,
-            correlationId,
-            since: lastFetchTime,
-            seenPostUris,
-            isInitialFetch: false,
-            onData,
-            onProcessed: (count) => {
-              if (count > 0) {
-                totalProcessed += count;
-                this.logger.log(
-                  `[${correlationId}] Poll: ${count} new posts, total: ${totalProcessed}`,
-                );
-              }
-            },
-          });
-        } catch (error) {
-          this.logger.error(
-            `[${correlationId}] Unexpected poll error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          );
-        }
+          // Check if job should end
+          if (Date.now() - startTime >= maxDurationMs) {
+            this.logger.log(
+              `[${correlationId}] Job duration reached, stopping polling`,
+            );
+            // Call internal stop method (we're already in the mutex)
+            this.stopPollingJobInternal(jobId);
+            return;
+          }
 
-        lastFetchTime = new Date();
+          // Check if cancelled
+          if (signal?.aborted) {
+            this.logger.log(
+              `[${correlationId}] Job cancelled, stopping polling`,
+            );
+            // Call internal stop method (we're already in the mutex)
+            this.stopPollingJobInternal(jobId);
+            return;
+          }
+
+          // Fetch new posts since last fetch
+          try {
+            await this.fetchAndProcess({
+              jobId,
+              prompt,
+              correlationId,
+              since: lastFetchTime,
+              seenPostUris,
+              isInitialFetch: false,
+              onData,
+              onProcessed: (count) => {
+                if (count > 0) {
+                  totalProcessed += count;
+                  this.logger.log(
+                    `[${correlationId}] Poll: ${count} new posts, total: ${totalProcessed}`,
+                  );
+                }
+              },
+            });
+          } catch (error) {
+            this.logger.error(
+              `[${correlationId}] Unexpected poll error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            );
+          }
+        });
       })();
     }, pollIntervalMs);
 
-    this.activeJobs.set(jobId, { pollInterval, onComplete, seenPostUris });
+    this.activeJobs.set(jobId, {
+      pollInterval,
+      onComplete,
+      seenPostUris,
+      stopMutex: new Mutex(),
+      isStopping: false,
+    });
   }
 
   /**
    * Stop a polling job and notify completion
+   * Uses mutex to prevent race condition with ongoing poll operations
    */
-  stopPollingJob(jobId: string): void {
+  async stopPollingJob(jobId: string): Promise<void> {
     const job = this.activeJobs.get(jobId);
     if (job) {
+      // Use mutex to ensure poll operation completes before stopping
+      await job.stopMutex.runExclusive(() => {
+        this.stopPollingJobInternal(jobId);
+      });
+    }
+  }
+
+  /**
+   * Internal stop method - does not acquire mutex
+   * Should only be called from within mutex or from stopPollingJob
+   */
+  private stopPollingJobInternal(jobId: string): void {
+    const job = this.activeJobs.get(jobId);
+    if (job && !job.isStopping) {
+      job.isStopping = true;
       clearInterval(job.pollInterval);
       this.activeJobs.delete(jobId);
       this.logger.log(`Stopped polling job: ${jobId}`);

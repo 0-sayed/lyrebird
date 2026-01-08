@@ -240,8 +240,8 @@ describe('IngestionService', () => {
   });
 
   describe('stopJob', () => {
-    it('should call stopPollingJob on the scraper', () => {
-      service.stopJob('job-123');
+    it('should call stopPollingJob on the scraper', async () => {
+      await service.stopJob('job-123');
 
       expect(mockPollingScraperService.stopPollingJob).toHaveBeenCalledWith(
         'job-123',

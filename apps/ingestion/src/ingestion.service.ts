@@ -116,8 +116,8 @@ export class IngestionService {
   /**
    * Stop an active polling job
    */
-  stopJob(jobId: string): void {
-    this.pollingScraperService.stopPollingJob(jobId);
+  async stopJob(jobId: string): Promise<void> {
+    await this.pollingScraperService.stopPollingJob(jobId);
     this.logger.log(`Stopped job: ${jobId}`);
   }
 
