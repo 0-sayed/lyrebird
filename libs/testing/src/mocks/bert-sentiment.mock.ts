@@ -14,5 +14,6 @@ export const createMockBertSentimentService = () => ({
     provider: 'afinn',
     huggingfaceConfigured: false,
   }),
-  onModuleInit: jest.fn(),
+  // Note: BertSentimentService does not implement OnModuleInit
+  // This mock only includes the public API methods that the service exposes
 });
