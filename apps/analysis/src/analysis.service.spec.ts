@@ -45,7 +45,17 @@ describe('AnalysisService', () => {
       emit: jest.fn(),
     };
 
-    const module: TestingModule = await Test.createTestingModule({
+    mockBertSentimentService = {
+      analyze: jest.fn().mockResolvedValue({
+        score: 0.85,
+        label: 'positive',
+        confidence: 0.92,
+      }),
+      isReady: jest.fn().mockReturnValue(true),
+      getStatus: jest.fn().mockReturnValue({ ready: true, loading: false }),
+    };
+
+    module = await Test.createTestingModule({
       providers: [
         AnalysisService,
         {
@@ -54,10 +64,18 @@ describe('AnalysisService', () => {
         },
         { provide: JobsRepository, useValue: mockJobsRepository },
         { provide: RabbitmqService, useValue: mockRabbitmqService },
+        { provide: BertSentimentService, useValue: mockBertSentimentService },
       ],
     }).compile();
 
     service = module.get<AnalysisService>(AnalysisService);
+    // Initialize module to trigger lifecycle hooks
+    await module.init();
+  });
+
+  afterEach(async () => {
+    // Close module to trigger OnModuleDestroy and clean up intervals
+    await module.close();
   });
 
   it('should be defined', () => {
@@ -74,6 +92,12 @@ describe('AnalysisService', () => {
     };
 
     it('should process positive text and save to database', async () => {
+      (mockBertSentimentService.analyze as jest.Mock).mockResolvedValue({
+        score: 0.85,
+        label: 'positive',
+        confidence: 0.92,
+      });
+
       await service.processRawData(baseMessage, 'test-correlation-id');
 
       expect(mockSentimentDataRepository.create).toHaveBeenCalled();
@@ -83,6 +107,12 @@ describe('AnalysisService', () => {
     });
 
     it('should process negative text correctly', async () => {
+      (mockBertSentimentService.analyze as jest.Mock).mockResolvedValue({
+        score: 0.15,
+        label: 'negative',
+        confidence: 0.88,
+      });
+
       const negativeMessage = {
         ...baseMessage,
         textContent: 'This is terrible and I hate it',
@@ -96,6 +126,12 @@ describe('AnalysisService', () => {
     });
 
     it('should process neutral text correctly', async () => {
+      (mockBertSentimentService.analyze as jest.Mock).mockResolvedValue({
+        score: 0.5,
+        label: 'neutral',
+        confidence: 0.6,
+      });
+
       const neutralMessage = {
         ...baseMessage,
         textContent: 'This product exists',
@@ -108,6 +144,12 @@ describe('AnalysisService', () => {
     });
 
     it('should include confidence score', async () => {
+      (mockBertSentimentService.analyze as jest.Mock).mockResolvedValue({
+        score: 0.85,
+        label: 'positive',
+        confidence: 0.92,
+      });
+
       await service.processRawData(baseMessage, 'test-correlation-id');
 
       const createCall = getCreateCallArg();
@@ -142,6 +184,12 @@ describe('AnalysisService', () => {
     });
 
     it('should process text with "okay" as neutral', async () => {
+      (mockBertSentimentService.analyze as jest.Mock).mockResolvedValue({
+        score: 0.5,
+        label: 'neutral',
+        confidence: 0.55,
+      });
+
       const okayMessage = {
         ...baseMessage,
         textContent: 'The product is okay',
@@ -155,6 +203,12 @@ describe('AnalysisService', () => {
     });
 
     it('should process text with "excellent" as positive', async () => {
+      (mockBertSentimentService.analyze as jest.Mock).mockResolvedValue({
+        score: 0.9,
+        label: 'positive',
+        confidence: 0.95,
+      });
+
       const excellentMessage = {
         ...baseMessage,
         textContent: 'This is excellent!',
@@ -167,6 +221,11 @@ describe('AnalysisService', () => {
     });
 
     it('should process text with "worst" as negative', async () => {
+      (mockBertSentimentService.analyze as jest.Mock).mockResolvedValue({
+        score: 0.1,
+        label: 'negative',
+        confidence: 0.9,
+      });
       const worstMessage = {
         ...baseMessage,
         textContent: 'This is the worst product ever',
