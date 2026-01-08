@@ -109,20 +109,23 @@ export class BlueskyClientService implements OnModuleInit {
   ): Promise<SearchPostsResult> {
     await this.ensureAuthenticated();
 
-    // Track timeout ID to clear it after request completes
+    // Use AbortController to properly handle timeout and prevent race conditions
+    // between Promise.race resolution and timeout callback execution
+    const abortController = new AbortController();
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let isResolved = false;
 
     try {
       this.logger.debug(`Searching Bluesky for: "${query}"`);
 
-      // Add timeout to prevent hanging on API calls
-      // Use a clearable timeout to avoid keeping Node.js process alive
+      // Set up timeout with abort signal
       const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(
-          () =>
-            reject(new Error('Bluesky API request timed out after 15 seconds')),
-          15000,
-        );
+        timeoutId = setTimeout(() => {
+          if (!isResolved) {
+            abortController.abort();
+            reject(new Error('Bluesky API request timed out after 15 seconds'));
+          }
+        }, 15000);
       });
 
       const response = await Promise.race([
@@ -137,6 +140,9 @@ export class BlueskyClientService implements OnModuleInit {
         }),
         timeoutPromise,
       ]);
+
+      // Mark as resolved to prevent timeout callback from executing
+      isResolved = true;
 
       const posts: BlueskyPost[] = response.data.posts.reduce<BlueskyPost[]>(
         (acc, post) => {
@@ -203,6 +209,7 @@ export class BlueskyClientService implements OnModuleInit {
         hitsTotal: response.data.hitsTotal,
       };
     } catch (error) {
+      isResolved = true; // Prevent timeout callback from running after error
       const message = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error(`Bluesky search failed: ${message}`);
       throw new Error(`Bluesky search failed: ${message}`);
@@ -254,10 +261,26 @@ export class BlueskyClientService implements OnModuleInit {
   }
 
   /**
-   * Check if the client is ready to make API calls
+   * Check if the client is ready to make API calls.
+   * Returns true if either:
+   * - Already authenticated with a valid session, OR
+   * - Has credentials available for authentication
+   *
+   * Note: Password is cleared from memory after successful authentication
+   * for security. Re-authentication fetches credentials from ConfigService.
    */
   isReady(): boolean {
-    return Boolean(this.identifier && this.password);
+    // If authenticated with a non-expired session, we're ready
+    if (
+      this.isAuthenticated &&
+      this.sessionExpiresAt &&
+      new Date() < this.sessionExpiresAt
+    ) {
+      return true;
+    }
+    // Otherwise, check if we can authenticate (identifier is required,
+    // password will be fetched from config if needed during ensureAuthenticated)
+    return Boolean(this.identifier);
   }
 
   /**
