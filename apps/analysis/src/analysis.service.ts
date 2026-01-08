@@ -68,7 +68,15 @@ export class AnalysisService implements OnModuleInit, OnModuleDestroy {
       CLEANUP_INTERVAL_MS,
     );
     // Prevent the interval from keeping the process alive during testing/graceful shutdown
-    this.cleanupIntervalId.unref();
+    // Guard against environments where setInterval returns numeric IDs without unref()
+    if (
+      this.cleanupIntervalId &&
+      typeof this.cleanupIntervalId === 'object' &&
+      'unref' in this.cleanupIntervalId &&
+      typeof this.cleanupIntervalId.unref === 'function'
+    ) {
+      this.cleanupIntervalId.unref();
+    }
   }
 
   /**
@@ -79,16 +87,25 @@ export class AnalysisService implements OnModuleInit, OnModuleDestroy {
       clearInterval(this.cleanupIntervalId);
       this.cleanupIntervalId = null;
     }
+    // Ensure final cleanup of stale trackers before shutdown
+    this.cleanupStaleTrackers();
   }
 
   /**
    * Clean up stale job tracking entries that haven't been updated recently
    * Prevents memory leak from jobs that never complete
+   *
+   * Note: Only removes trackers that haven't received ingestion complete signal
+   * to avoid losing state for long-running jobs that are still active
    */
   private cleanupStaleTrackers(): void {
     const now = Date.now();
     for (const [jobId, tracker] of this.jobProcessingTracker.entries()) {
-      if (now - tracker.lastUpdated > JOB_TRACKER_TTL_MS) {
+      const isStale = now - tracker.lastUpdated > JOB_TRACKER_TTL_MS;
+      // Only cleanup if stale AND ingestion hasn't completed yet
+      // (completed ingestion means job is actively being processed)
+      if (isStale && !tracker.ingestionComplete) {
+        this.logger.debug(`Cleaning up stale tracker for job ${jobId}`);
         this.jobProcessingTracker.delete(jobId);
         this.jobMutexes.delete(jobId);
       }
@@ -139,16 +156,30 @@ export class AnalysisService implements OnModuleInit, OnModuleDestroy {
       // Note: Dates come as ISO strings from JSON serialization over RabbitMQ
       const publishedAtDate = new Date(message.publishedAt);
       const collectedAtDate = new Date(message.collectedAt);
+      const now = new Date();
+      const farFutureThreshold = new Date(
+        now.getTime() + 365 * 24 * 60 * 60 * 1000,
+      ); // 1 year from now
 
-      // Validate dates to prevent Invalid Date objects
+      // Validate dates to prevent Invalid Date objects and far-future dates (data corruption)
       if (isNaN(publishedAtDate.getTime())) {
         throw new Error(
-          `Invalid publishedAt date: ${String(message.publishedAt)}`,
+          `Invalid publishedAt date for job ${jobId}: ${String(message.publishedAt)}`,
+        );
+      }
+      if (publishedAtDate > farFutureThreshold) {
+        throw new Error(
+          `publishedAt date is too far in the future for job ${jobId}: ${publishedAtDate.toISOString()} (possible data corruption or system time issue)`,
         );
       }
       if (isNaN(collectedAtDate.getTime())) {
         throw new Error(
-          `Invalid collectedAt date: ${String(message.collectedAt)}`,
+          `Invalid collectedAt date for job ${jobId}: ${String(message.collectedAt)}`,
+        );
+      }
+      if (collectedAtDate > farFutureThreshold) {
+        throw new Error(
+          `collectedAt date is too far in the future for job ${jobId}: ${collectedAtDate.toISOString()} (possible data corruption or system time issue)`,
         );
       }
       const sentimentRecord: NewSentimentData = {
@@ -205,16 +236,25 @@ export class AnalysisService implements OnModuleInit, OnModuleDestroy {
   }> {
     const result = await this.bertSentimentService.analyze(text);
 
+    // Normalize label to lowercase to handle case variations from different BERT implementations
+    const normalizedLabel = result.label.toLowerCase();
+
     // Map the string label to SentimentLabel enum
     let sentimentLabel: SentimentLabel;
-    switch (result.label) {
+    switch (normalizedLabel) {
       case 'positive':
         sentimentLabel = SentimentLabel.POSITIVE;
         break;
       case 'negative':
         sentimentLabel = SentimentLabel.NEGATIVE;
         break;
+      case 'neutral':
+        sentimentLabel = SentimentLabel.NEUTRAL;
+        break;
       default:
+        this.logger.warn(
+          `Unknown sentiment label '${result.label}', defaulting to NEUTRAL`,
+        );
         sentimentLabel = SentimentLabel.NEUTRAL;
     }
 
