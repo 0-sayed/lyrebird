@@ -35,6 +35,21 @@ export interface ServiceStatus {
   provider: 'huggingface' | 'afinn' | 'none';
   huggingfaceConfigured: boolean;
   error?: string;
+  lastErrorAt?: string;
+}
+
+/**
+ * Custom HTTP error class for type-safe error handling
+ * Avoids brittle type assertions when attaching statusCode to Error
+ */
+export class HttpError extends Error {
+  constructor(
+    message: string,
+    public readonly statusCode: number,
+  ) {
+    super(message);
+    this.name = 'HttpError';
+  }
 }
 
 /**
@@ -81,11 +96,17 @@ export class BertSentimentService {
   private readonly huggingfaceApiKey: string | undefined;
   private readonly huggingfaceApiUrl: string;
 
+  // HuggingFace error tracking for health status reporting
+  private hfLastError: string | null = null;
+  private hfLastErrorAt: Date | null = null;
+
   private static readonly MODEL_NAME =
     'distilbert/distilbert-base-uncased-finetuned-sst-2-english';
   private static readonly HF_API_BASE =
     'https://router.huggingface.co/hf-inference/models';
   private static readonly MAX_TEXT_LENGTH = 500;
+  // Predictions below 60% confidence are considered too uncertain to classify
+  // as positive/negative and are labeled as neutral instead
   private static readonly NEUTRAL_THRESHOLD = 0.6;
 
   // AFINN score range is approximately -5 to +5 per word
@@ -124,12 +145,30 @@ export class BertSentimentService {
 
   /**
    * Get service status information
+   *
+   * A HuggingFace API key being present is not sufficient to consider the service "ready":
+   * if recent HuggingFace calls have been failing, the status will reflect that by
+   * surfacing the last error and flipping `ready` to false for the HuggingFace provider.
    */
   getStatus(): ServiceStatus {
+    const hasApiKey = !!this.huggingfaceApiKey;
+
+    if (!hasApiKey) {
+      return {
+        ready: true,
+        provider: 'afinn',
+        huggingfaceConfigured: false,
+        error: 'HUGGINGFACE_API_KEY not configured - using AFINN fallback only',
+      };
+    }
+
+    const hasRecentHfError = !!this.hfLastError;
     return {
-      ready: true,
-      provider: this.huggingfaceApiKey ? 'huggingface' : 'afinn',
-      huggingfaceConfigured: !!this.huggingfaceApiKey,
+      ready: !hasRecentHfError,
+      provider: 'huggingface',
+      huggingfaceConfigured: true,
+      error: this.hfLastError ?? undefined,
+      lastErrorAt: this.hfLastErrorAt?.toISOString() ?? undefined,
     };
   }
 
@@ -190,10 +229,10 @@ export class BertSentimentService {
       );
     } else {
       // Use native fetch with timeout and error handling
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
 
+      try {
         const fetchResponse = await fetch(this.huggingfaceApiUrl, {
           method: 'POST',
           headers,
@@ -201,14 +240,11 @@ export class BertSentimentService {
           signal: controller.signal,
         });
 
-        clearTimeout(timeoutId);
-
         if (!fetchResponse.ok) {
-          const error = new Error(
+          throw new HttpError(
             `HuggingFace API error: ${fetchResponse.status}`,
-          ) as Error & { statusCode?: number };
-          error.statusCode = fetchResponse.status;
-          throw error;
+            fetchResponse.status,
+          );
         }
 
         // Handle JSON parsing errors
@@ -220,12 +256,26 @@ export class BertSentimentService {
             `Failed to parse HuggingFace API response: ${jsonError instanceof Error ? jsonError.message : 'Invalid JSON'}`,
           );
         }
+
+        // Clear any previous error on successful request
+        this.hfLastError = null;
+        this.hfLastErrorAt = null;
       } catch (fetchError) {
+        // Track the error for health status reporting
+        this.hfLastError =
+          fetchError instanceof Error
+            ? fetchError.message
+            : 'Unknown HuggingFace error';
+        this.hfLastErrorAt = new Date();
+
         // Handle network errors and timeouts
         if (fetchError instanceof Error && fetchError.name === 'AbortError') {
           throw new Error('HuggingFace API request timed out after 10 seconds');
         }
         throw fetchError;
+      } finally {
+        // Ensure timeout is always cleared, even if JSON parsing fails
+        clearTimeout(timeoutId);
       }
     }
 
@@ -275,17 +325,18 @@ export class BertSentimentService {
     const scoredWordRatio =
       (result.positive.length + result.negative.length) /
       Math.max(1, result.tokens.length);
+    // Cap AFINN confidence below 1.0 because it is a simple lexicon-based model
+    // and generally less reliable than the HuggingFace/BERT classifier; this keeps
+    // its reported confidence conservative and comparable across models.
     const confidence = Math.min(0.85, 0.4 + scoredWordRatio * 0.5);
 
-    // Determine label
-    let label: 'positive' | 'negative' | 'neutral';
-    if (normalizedScore > 0.55) {
-      label = 'positive';
-    } else if (normalizedScore < 0.45) {
-      label = 'negative';
-    } else {
-      label = 'neutral';
-    }
+    // Determine label based on normalized score thresholds
+    const label: 'positive' | 'negative' | 'neutral' =
+      normalizedScore > 0.55
+        ? 'positive'
+        : normalizedScore < 0.45
+          ? 'negative'
+          : 'neutral';
 
     return {
       score: normalizedScore,
@@ -313,14 +364,12 @@ export class BertSentimentService {
     }
 
     // Determine label (neutral for low confidence predictions)
-    let sentimentLabel: 'positive' | 'negative' | 'neutral';
-    if (confidence < BertSentimentService.NEUTRAL_THRESHOLD) {
-      sentimentLabel = 'neutral';
-    } else if (label === 'POSITIVE') {
-      sentimentLabel = 'positive';
-    } else {
-      sentimentLabel = 'negative';
-    }
+    const sentimentLabel: 'positive' | 'negative' | 'neutral' =
+      confidence < BertSentimentService.NEUTRAL_THRESHOLD
+        ? 'neutral'
+        : label === 'POSITIVE'
+          ? 'positive'
+          : 'negative';
 
     return {
       score: normalizedScore,
@@ -344,10 +393,6 @@ export class BertSentimentService {
    * Check if an error is a rate limit error (HTTP 429)
    */
   private isRateLimitError(error: unknown): boolean {
-    if (error && typeof error === 'object') {
-      const statusCode = (error as { statusCode?: number }).statusCode;
-      return statusCode === 429;
-    }
-    return false;
+    return error instanceof HttpError && error.statusCode === 429;
   }
 }
