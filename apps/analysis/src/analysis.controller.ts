@@ -7,7 +7,11 @@ import {
 } from '@nestjs/microservices';
 import type { Channel, Message } from 'amqplib';
 import { AnalysisService } from './analysis.service';
-import { MESSAGE_PATTERNS } from '@app/shared-types';
+import {
+  MESSAGE_PATTERNS,
+  TransientError,
+  PermanentError,
+} from '@app/shared-types';
 import type {
   RawDataMessage,
   IngestionCompleteMessage,
@@ -153,33 +157,23 @@ export class AnalysisController {
 
   /**
    * Determine if an error is transient and should be retried
+   *
+   * Uses custom error classes (TransientError, PermanentError) for reliable
+   * retry decisions instead of fragile string matching on error messages.
    */
   private shouldRequeue(error: unknown): boolean {
-    if (error instanceof Error) {
-      const message = error.message.toLowerCase();
-
-      // Transient errors - should retry
-      if (
-        message.includes('timeout') ||
-        message.includes('connection') ||
-        message.includes('unavailable') ||
-        message.includes('temporary')
-      ) {
-        return true;
-      }
-
-      // Permanent errors - don't retry
-      if (
-        message.includes('validation') ||
-        message.includes('invalid') ||
-        message.includes('not found') ||
-        message.includes('duplicate')
-      ) {
-        return false;
-      }
+    // Explicit transient errors should always be retried
+    if (error instanceof TransientError) {
+      return true;
     }
 
-    // Default: requeue unknown errors
+    // Explicit permanent errors should never be retried
+    if (error instanceof PermanentError) {
+      return false;
+    }
+
+    // Default: requeue unknown errors (fail-safe approach)
+    // This ensures we don't lose messages due to unexpected error types
     return true;
   }
 }
