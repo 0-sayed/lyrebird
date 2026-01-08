@@ -26,7 +26,7 @@ pnpm test
 
 - Run `pnpm lint` before committing
 - Run `pnpm test` to ensure tests pass
-- Use conventional commits: `feat:`, `fix:`, `docs:`, `refactor:`
+- Use conventional commits (e.g., `feat:`, `fix:`, `docs:`, `refactor:`, `chore:`, `test:`). See [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) for more details.
 
 ## Pull Request Process
 
