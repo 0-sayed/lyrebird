@@ -1,7 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RabbitmqService } from '@app/rabbitmq';
-import { MESSAGE_PATTERNS, StartJobMessage } from '@app/shared-types';
+import {
+  MESSAGE_PATTERNS,
+  StartJobMessage,
+  IngestionCompleteMessage,
+} from '@app/shared-types';
 import { PollingScraperService } from './scrapers/polling-scraper.service';
 
 @Injectable()
@@ -77,8 +81,23 @@ export class IngestionService {
             onComplete: () => {
               const duration = Date.now() - startTime;
               this.logger.log(
-                `[${correlationId}] Job completed in ${duration}ms, published ${itemCount} items`,
+                `[${correlationId}] Ingestion completed in ${duration}ms, published ${itemCount} items`,
               );
+
+              // Signal Analysis service that all data has been sent
+              const ingestionComplete: IngestionCompleteMessage = {
+                jobId: message.jobId,
+                totalItems: itemCount,
+                completedAt: new Date(),
+              };
+              this.rabbitmqService.emit(
+                MESSAGE_PATTERNS.JOB_INGESTION_COMPLETE,
+                ingestionComplete,
+              );
+              this.logger.log(
+                `[${correlationId}] Published JOB_INGESTION_COMPLETE: ${itemCount} items`,
+              );
+
               resolve();
             },
           })
