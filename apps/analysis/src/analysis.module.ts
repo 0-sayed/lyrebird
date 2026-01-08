@@ -17,6 +17,5 @@ import { SentimentModule } from './services/sentiment.module';
   ],
   controllers: [AnalysisController],
   providers: [AnalysisService],
-  exports: [SentimentModule],
 })
 export class AnalysisModule {}
