@@ -3,8 +3,11 @@
   "version": "0.0.1",
   "description": "A distributed microservices platform for real-time sentiment analysis of Bluesky content",
   "author": "Sayed Ashraf",
-  "private": false,
+  "private": true,
   "license": "MIT",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/0-sayed/lyrebird.git"
