@@ -47,7 +47,7 @@
     "test:e2e": "jest --config ./apps/gateway/test/jest-e2e.json",
     "test:e2e:all": "jest --config ./apps/gateway/test/jest-e2e.json && jest --config ./apps/analysis/test/jest-e2e.json && jest --config ./apps/ingestion/test/jest-e2e.json",
     "test:ci": "jest --coverage --ci --maxWorkers=2",
-    "validate": "pnpm lint && pnpm type-check && pnpm test && pnpm build",
+    "validate": "pnpm lint && pnpm type-check && pnpm test && pnpm knip && pnpm build",
     "type-check": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
