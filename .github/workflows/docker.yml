@@ -28,9 +28,9 @@ jobs:
     permissions:
       contents: read
       packages: write
-      # NOTE: attestations and id-token permissions disabled until repo is public
-      # attestations: write
-      # id-token: write
+      # Required for attestations
+      attestations: write
+      id-token: write
 
     strategy:
       fail-fast: false
@@ -93,14 +93,38 @@ jobs:
             NODE_VERSION=22-alpine
             PNPM_VERSION=10.23.0
 
-      # NOTE: Attestation disabled for private repositories
-      # TODO: Re-enable when repository is made public (Phase 2)
-      # - name: Generate artifact attestation
-      #   uses: actions/attest-build-provenance@46a583fd92dfbf46b772907a9740f888f4324bb9 # v3.1.0
-      #   with:
-      #     subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service }}
-      #     subject-digest: ${{ steps.push.outputs.digest }}
-      #     push-to-registry: true
+      # Generate SBOM for the Docker image
+      - name: Generate SBOM
+        uses: anchore/sbom-action@d94f46e13c6c62f59525ac9a1e147a99dc0b9bf5 # v0.17.0
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service }}@${{ steps.push.outputs.digest }}
+          format: spdx-json
+          output-file: sbom-${{ matrix.service }}.spdx.json
+
+      # Upload SBOM as artifact
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sbom-${{ matrix.service }}
+          path: sbom-${{ matrix.service }}.spdx.json
+          retention-days: 90
+
+      # Generate artifact attestation with SBOM
+      - name: Attest SBOM
+        uses: actions/attest-sbom@bd218ad0dbcb3e146bd073d1d9c6d78e08aa8a0b # v2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          sbom-path: sbom-${{ matrix.service }}.spdx.json
+          push-to-registry: true
+
+      # Generate build provenance attestation
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
 
   # ========================================
   # Post-Build Verification
