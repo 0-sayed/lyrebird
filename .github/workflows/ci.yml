@@ -68,6 +68,9 @@ jobs:
       - name: Run TypeScript type check
         run: pnpm type-check
 
+      - name: Run Knip (check for unused code/deps)
+        run: pnpm knip
+
   # ========================================
   # Unit Test Job - Fast Feedback
   # ========================================
