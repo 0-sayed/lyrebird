@@ -1,6 +1,7 @@
 # Lyrebird
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/0-sayed/lyrebird/badge)](https://scorecard.dev/viewer/?uri=github.com/0-sayed/lyrebird)
 [![Node.js](https://img.shields.io/badge/Node.js-22+-green.svg)](https://nodejs.org/)
 [![NestJS](https://img.shields.io/badge/NestJS-11-red.svg)](https://nestjs.com/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
