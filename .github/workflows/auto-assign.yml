@@ -1,0 +1,47 @@
+# ========================================
+# Lyrebird PR Auto-Assign
+# ========================================
+# Automatically assigns the PR author as assignee
+
+name: PR Auto Assign
+
+on:
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  assign-author:
+    name: Assign Author
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Assign PR author as assignee
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo;
+            const prNumber = context.payload.pull_request.number;
+            const author = context.payload.pull_request.user.login;
+
+            // Skip if author is a bot
+            if (author.includes('[bot]') || author.endsWith('-bot')) {
+              console.log(`Skipping bot author: ${author}`);
+              return;
+            }
+
+            try {
+              await github.rest.issues.addAssignees({
+                owner,
+                repo,
+                issue_number: prNumber,
+                assignees: [author]
+              });
+              console.log(`Assigned ${author} to PR #${prNumber}`);
+            } catch (error) {
+              console.log(`Failed to assign ${author}: ${error.message}`);
+            }
