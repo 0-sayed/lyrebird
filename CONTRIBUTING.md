@@ -20,12 +20,16 @@ pnpm start:all
 
 # Run tests
 pnpm test
+
+# Check for unused code/dependencies
+pnpm knip
 ```
 
 ## Code Standards
 
 - Run `pnpm lint` before committing
 - Run `pnpm test` to ensure tests pass
+- Run `pnpm knip` to find unused code/dependencies
 - Use conventional commits (e.g., `feat:`, `fix:`, `docs:`, `refactor:`, `chore:`, `test:`). See [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) for more details.
 
 ```text
@@ -41,6 +45,7 @@ deps(npm): update nestjs to v11
 pnpm lint          # Run ESLint
 pnpm type-check    # TypeScript type checking
 pnpm test          # Run tests
+pnpm knip          # Find unused code/dependencies
 pnpm validate      # Run all checks (lint, type-check, test, build)
 ```
 
