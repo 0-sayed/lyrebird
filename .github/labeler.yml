@@ -52,23 +52,23 @@ analysis:
       - any-glob-to-any-file: 'apps/analysis/**'
 
 # Library labels
-lib:database:
+lib-database:
   - changed-files:
       - any-glob-to-any-file: 'libs/database/**'
 
-lib:rabbitmq:
+lib-rabbitmq:
   - changed-files:
       - any-glob-to-any-file: 'libs/rabbitmq/**'
 
-lib:bluesky:
+lib-bluesky:
   - changed-files:
       - any-glob-to-any-file: 'libs/bluesky/**'
 
-lib:shared-types:
+lib-shared-types:
   - changed-files:
       - any-glob-to-any-file: 'libs/shared-types/**'
 
-lib:testing:
+lib-testing:
   - changed-files:
       - any-glob-to-any-file: 'libs/testing/**'
 
@@ -99,13 +99,14 @@ dependencies:
 config:
   - changed-files:
       - any-glob-to-any-file:
-          - '*.json'
           - '*.mjs'
           - '*.toml'
           - '.prettierrc'
           - '.gitignore'
           - 'nest-cli.json'
           - 'tsconfig*.json'
+          - 'drizzle.config.ts'
+          - 'eslint.config.mjs'
 
 # Test files
 tests:
