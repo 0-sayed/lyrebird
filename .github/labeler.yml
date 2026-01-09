@@ -1,0 +1,123 @@
+# ========================================
+# PR Labeler Configuration
+# ========================================
+# Auto-labels PRs based on files changed and branch names
+# Used by: .github/workflows/labeler.yml
+
+# --- Type labels (based on branch naming conventions) ---
+feature:
+  - head-branch: ['^feat/.*', '^feature/.*']
+
+bug:
+  - head-branch: ['^fix/.*', '^bug/.*', '^bugfix/.*']
+
+chore:
+  - head-branch: ['^chore/.*']
+
+documentation:
+  - head-branch: ['^docs/.*']
+  - changed-files:
+      - any-glob-to-any-file:
+          - '**/*.md'
+          - 'docs/**'
+          - 'LICENSE'
+          - 'CONTRIBUTING.md'
+
+refactor:
+  - head-branch: ['^refactor/.*']
+
+performance:
+  - head-branch: ['^perf/.*']
+
+ci:
+  - head-branch: ['^ci/.*']
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/**'
+          - 'scripts/**'
+
+# --- Area labels (based on file paths) ---
+
+# Service labels
+gateway:
+  - changed-files:
+      - any-glob-to-any-file: 'apps/gateway/**'
+
+ingestion:
+  - changed-files:
+      - any-glob-to-any-file: 'apps/ingestion/**'
+
+analysis:
+  - changed-files:
+      - any-glob-to-any-file: 'apps/analysis/**'
+
+# Library labels
+lib:database:
+  - changed-files:
+      - any-glob-to-any-file: 'libs/database/**'
+
+lib:rabbitmq:
+  - changed-files:
+      - any-glob-to-any-file: 'libs/rabbitmq/**'
+
+lib:bluesky:
+  - changed-files:
+      - any-glob-to-any-file: 'libs/bluesky/**'
+
+lib:shared-types:
+  - changed-files:
+      - any-glob-to-any-file: 'libs/shared-types/**'
+
+lib:testing:
+  - changed-files:
+      - any-glob-to-any-file: 'libs/testing/**'
+
+# Infrastructure labels
+docker:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'docker/**'
+          - 'docker-compose*.yml'
+          - '**/Dockerfile*'
+
+# Database/migrations
+database:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'libs/database/migrations/**'
+          - 'drizzle.config.ts'
+
+# Configuration & Dependencies
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'package.json'
+          - 'pnpm-lock.yaml'
+          - 'pnpm-workspace.yaml'
+          - '**/package.json'
+
+config:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '*.json'
+          - '*.mjs'
+          - '*.toml'
+          - '.prettierrc'
+          - '.gitignore'
+          - 'nest-cli.json'
+          - 'tsconfig*.json'
+
+# Test files
+tests:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '**/*.spec.ts'
+          - '**/*.e2e-spec.ts'
+          - 'test/**'
+
+# Security
+security:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'SECURITY.md'
+          - '.github/SECURITY.md'
