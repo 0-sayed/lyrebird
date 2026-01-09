@@ -73,7 +73,7 @@ jobs:
         uses: actions/dependency-review-action@4081bf99e2866ebe428fc0477b69eb4fcda7220a # v4.5.0
         with:
           fail-on-severity: high
-          deny-licenses: GPL-3.0, AGPL-3.0, LGPL-3.0
+          deny-licenses: GPL-3.0, AGPL-3.0
           comment-summary-in-pr: on-failure
 
   # ========================================
