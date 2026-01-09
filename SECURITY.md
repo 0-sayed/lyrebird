@@ -10,11 +10,28 @@
 
 If you discover a security vulnerability, please report it responsibly:
 
-1. **Do not** open a public GitHub issue
-2. Email the maintainer directly with details
-3. Include steps to reproduce if possible
+### Preferred Method: GitHub Security Advisories
 
-We will respond within 48 hours and work with you to understand and resolve the issue.
+Report vulnerabilities privately through GitHub's Security Advisory feature:
+
+1. Go to <https://github.com/0-sayed/lyrebird/security/advisories/new>
+2. Provide detailed information about the vulnerability
+3. We will respond within 48 hours
+
+### Alternative: Email
+
+If you cannot use GitHub Security Advisories, you can email the maintainer:
+
+- **Email**: <2sayed.5ashraf@gmail.com>
+
+### What to Include
+
+- Description of the vulnerability
+- Steps to reproduce
+- Potential impact
+- Suggested fix (if any)
+
+**Please do NOT open a public GitHub issue for security vulnerabilities.**
 
 ## Security Best Practices
 
@@ -25,3 +42,6 @@ When deploying Lyrebird:
 - Restrict network access to internal services
 - Regularly update dependencies
 - Review environment variables before deployment
+- Use secrets management tools (e.g., HashiCorp Vault, AWS Secrets Manager)
+- Enable audit logging for all services
+- Implement network segmentation and firewalls
