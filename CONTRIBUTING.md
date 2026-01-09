@@ -28,11 +28,29 @@ pnpm test
 - Run `pnpm test` to ensure tests pass
 - Use conventional commits (e.g., `feat:`, `fix:`, `docs:`, `refactor:`, `chore:`, `test:`). See [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) for more details.
 
+```text
+feat: add sentiment analysis endpoint
+fix(gateway): resolve authentication issue
+docs: update API documentation
+deps(npm): update nestjs to v11
+```
+
+### Code Quality Commands
+
+```bash
+pnpm lint          # Run ESLint
+pnpm type-check    # TypeScript type checking
+pnpm test          # Run tests
+pnpm validate      # Run all checks (lint, type-check, test, build)
+```
+
 ## Pull Request Process
 
 1. Update documentation if needed
 2. Ensure all tests pass
-3. Request review from maintainers
+3. PRs are automatically labeled based on files changed
+4. Author is automatically assigned to the PR
+5. Request review from maintainers
 
 ## Reporting Issues
 
