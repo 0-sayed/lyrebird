@@ -17,14 +17,6 @@ export interface JobEventPayload {
 }
 
 /**
- * Emitted when a job status changes
- */
-export interface JobStatusChangedEvent extends JobEventPayload {
-  status: JobStatus;
-  previousStatus?: JobStatus;
-}
-
-/**
  * Emitted when a job is completed successfully
  */
 export interface JobCompletedEvent extends JobEventPayload {
@@ -39,15 +31,6 @@ export interface JobCompletedEvent extends JobEventPayload {
 export interface JobFailedEvent extends JobEventPayload {
   status: JobStatus.FAILED;
   errorMessage: string;
-}
-
-/**
- * Emitted during job progress updates
- */
-export interface JobProgressEvent extends JobEventPayload {
-  status: JobStatus.IN_PROGRESS;
-  processedCount: number;
-  totalCount?: number;
 }
 
 /**

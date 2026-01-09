@@ -1,0 +1,24 @@
+{
+  "$schema": "https://unpkg.com/knip@5.43.0/schema.json",
+  "entry": ["apps/*/src/main.ts", "apps/*/src/index.ts", "libs/*/src/index.ts"],
+  "project": ["apps/**/*.ts", "libs/**/*.ts"],
+  "ignore": [
+    "**/*.spec.ts",
+    "**/*.e2e-spec.ts",
+    "apps/*/test/**",
+    "test/**",
+    "coverage/**",
+    "dist/**",
+    "**/*.d.ts"
+  ],
+  "ignoreDependencies": [
+    "source-map-support",
+    "@nestjs/schematics",
+    "@eslint/eslintrc",
+    "@types/supertest",
+    "supertest",
+    "ts-loader",
+    "swagger-ui-express"
+  ],
+  "ignoreExportsUsedInFile": true
+}
