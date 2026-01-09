@@ -23,6 +23,9 @@ pnpm test
 
 # Check for unused code/dependencies
 pnpm knip
+
+# Auto-fix unused code/dependencies (WARNING: modifies files)
+pnpm knip:fix
 ```
 
 ## Code Standards
@@ -30,6 +33,7 @@ pnpm knip
 - Run `pnpm lint` before committing
 - Run `pnpm test` to ensure tests pass
 - Run `pnpm knip` to find unused code/dependencies
+  - **Note:** `pnpm knip:fix` can automatically remove unused code/dependencies, but it **modifies files** (package.json and source files). Always review changes or run it in a branch/with git stash.
 - Use conventional commits (e.g., `feat:`, `fix:`, `docs:`, `refactor:`, `chore:`, `test:`). See [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) for more details.
 
 ```text
@@ -46,7 +50,8 @@ pnpm lint          # Run ESLint
 pnpm type-check    # TypeScript type checking
 pnpm test          # Run tests
 pnpm knip          # Find unused code/dependencies
-pnpm validate      # Run all checks (lint, type-check, test, build)
+pnpm knip:fix      # Auto-fix unused code/dependencies (WARNING: modifies files)
+pnpm validate      # Run all checks (lint, type-check, test, knip, build)
 ```
 
 ## Pull Request Process
