@@ -64,12 +64,9 @@ test.describe('Responsive Design', () => {
     await page.goto('/');
 
     // Sidebar should be hidden on mobile by default
-    // There should be a hamburger menu or sheet trigger
+    // There should be a hamburger menu or sheet trigger visible
     const sheetTrigger = page.locator('[data-sidebar="trigger"]');
-    // If it exists, it should be for mobile menu
-    if (await sheetTrigger.isVisible()) {
-      await expect(sheetTrigger).toBeVisible();
-    }
+    await expect(sheetTrigger).toBeVisible();
   });
 
   test('should show full sidebar on desktop', async ({ page }) => {
