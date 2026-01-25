@@ -212,7 +212,11 @@ export function createMockJob(
 export function createMockJobResults(
   overrides: Partial<{
     job: ReturnType<typeof createMockJob>;
-    sentimentDistribution: { positive: number; neutral: number; negative: number };
+    sentimentDistribution: {
+      positive: number;
+      neutral: number;
+      negative: number;
+    };
     data: SentimentDataItem[];
     totalItems: number;
     averageSentiment: number | null;
