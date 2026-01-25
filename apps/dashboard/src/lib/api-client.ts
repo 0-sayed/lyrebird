@@ -156,19 +156,15 @@ async function fetchAPI<T>(
   if (schema) {
     const result = schema.safeParse(data);
     if (!result.success) {
-      if (import.meta.env.DEV) {
-        console.error('API response validation failed:', {
-          endpoint,
-          error: result.error.format(),
-        });
-        throw new APIError(
-          `Validation failed: ${result.error.message}`,
-          500,
-          'VALIDATION_ERROR',
-        );
-      }
-
-      return data as T;
+      console.error('API response validation failed:', {
+        endpoint,
+        error: result.error.format(),
+      });
+      throw new APIError(
+        `Validation failed: ${result.error.message}`,
+        500,
+        'VALIDATION_ERROR',
+      );
     }
     // Return the parsed/transformed data
     return result.data as T;
