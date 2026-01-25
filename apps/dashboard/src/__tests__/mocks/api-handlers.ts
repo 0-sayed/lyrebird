@@ -14,7 +14,9 @@ import { JobStatus, SentimentLabel } from '@/types/api';
 /**
  * Creates a mock job response
  */
-export function createMockJob(overrides: Partial<MockJobData> = {}): MockJobData {
+export function createMockJob(
+  overrides: Partial<MockJobData> = {},
+): MockJobData {
   const id = overrides.jobId ?? crypto.randomUUID();
   return {
     jobId: id,
@@ -141,7 +143,10 @@ export function resetMockData() {
 /**
  * Seed mock data for a specific job
  */
-export function seedMockJob(job: MockJobData, results?: MockJobResultsResponse) {
+export function seedMockJob(
+  job: MockJobData,
+  results?: MockJobResultsResponse,
+) {
   mockJobs.set(job.jobId, job);
   if (results) {
     mockResults.set(job.jobId, results);
