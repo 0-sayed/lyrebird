@@ -9,13 +9,22 @@ test.describe('Theme Switching', () => {
     });
   });
 
-  test('should load with system theme by default', async ({ page }) => {
-    // The html element should have the class based on system preference
-    const html = page.locator('html');
-    // System theme means no explicit class or the class matching system preference
-    const isDark = await html.evaluate((el) => el.classList.contains('dark'));
-    const isLight = await html.evaluate((el) => !el.classList.contains('dark'));
-    expect(isDark || isLight).toBe(true);
+  test('should respect system dark preference', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await page.reload();
+    await page.waitForSelector('[data-testid="theme-toggle"]', {
+      timeout: 10000,
+    });
+    await expect(page.locator('html')).toHaveClass(/dark/);
+  });
+
+  test('should respect system light preference', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.reload();
+    await page.waitForSelector('[data-testid="theme-toggle"]', {
+      timeout: 10000,
+    });
+    await expect(page.locator('html')).not.toHaveClass(/dark/);
   });
 
   test('should toggle to light theme', async ({ page }) => {
