@@ -65,5 +65,20 @@ describe('Sanitize Utilities', () => {
       const url = 'data:text/html,<script>alert(1)</script>';
       expect(sanitizeUrl(url)).toBe('');
     });
+
+    it('should reject vbscript: URLs', () => {
+      const url = 'vbscript:msgbox';
+      expect(sanitizeUrl(url)).toBe('');
+    });
+
+    it('should reject vbscript: URLs case-insensitively', () => {
+      const url = 'VBScript:evil';
+      expect(sanitizeUrl(url)).toBe('');
+    });
+
+    it('should reject protocol-relative URLs', () => {
+      const url = '//example.com/path';
+      expect(sanitizeUrl(url)).toBe('');
+    });
   });
 });
