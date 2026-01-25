@@ -41,8 +41,13 @@ export function sanitizeUrl(url: string): string {
     return '';
   } catch {
     // If URL parsing fails, it's likely a relative URL which is safe
-    // But check for javascript: anyway
-    if (url.toLowerCase().startsWith('javascript:')) {
+    // But check for dangerous protocols anyway (defense-in-depth)
+    const lower = url.toLowerCase();
+    if (
+      lower.startsWith('javascript:') ||
+      lower.startsWith('data:') ||
+      lower.startsWith('vbscript:')
+    ) {
       return '';
     }
     return url;
