@@ -12,8 +12,7 @@ describe('formatRelativeTime', () => {
   });
 
   // Helper to create dates relative to now in ms (must be called inside tests/hooks)
-  const msAgo = (ms: number) =>
-    new Date(Date.now() - ms).toISOString();
+  const msAgo = (ms: number) => new Date(Date.now() - ms).toISOString();
 
   const SECOND = 1000;
   const MINUTE = 60 * SECOND;

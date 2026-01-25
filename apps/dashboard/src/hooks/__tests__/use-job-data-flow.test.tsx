@@ -9,7 +9,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { type ReactNode } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-import { useJobDataFlow, type UseJobDataFlowOptions } from '../use-job-data-flow';
+import {
+  useJobDataFlow,
+  type UseJobDataFlowOptions,
+} from '../use-job-data-flow';
 import {
   seedMockJob,
   createMockJob,

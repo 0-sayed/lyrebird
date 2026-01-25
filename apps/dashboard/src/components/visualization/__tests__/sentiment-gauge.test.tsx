@@ -88,7 +88,6 @@ describe('SentimentGauge', () => {
         expect.stringContaining('Net Sentiment Score: 30'),
       );
     });
-
   });
 
   describe('SentimentGaugeInline', () => {

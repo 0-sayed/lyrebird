@@ -69,9 +69,12 @@ describe('useJobSSE', () => {
 
   describe('Connection Lifecycle', () => {
     it('connects when enabled and jobId provided', async () => {
-      const { result } = renderHook(() => useJobSSE('job-123', { enabled: true }), {
-        wrapper: createWrapper(),
-      });
+      const { result } = renderHook(
+        () => useJobSSE('job-123', { enabled: true }),
+        {
+          wrapper: createWrapper(),
+        },
+      );
 
       expect(result.current.connectionStatus).toBe('connecting');
 
@@ -127,9 +130,12 @@ describe('useJobSSE', () => {
     });
 
     it('disconnects on unmount', async () => {
-      const { unmount } = renderHook(() => useJobSSE('job-123', { enabled: true }), {
-        wrapper: createWrapper(),
-      });
+      const { unmount } = renderHook(
+        () => useJobSSE('job-123', { enabled: true }),
+        {
+          wrapper: createWrapper(),
+        },
+      );
 
       await act(async () => {
         await vi.runAllTimersAsync();
@@ -166,7 +172,9 @@ describe('useJobSSE', () => {
       expect(es).toBeDefined();
 
       // Verify the listener for job.subscribed event is registered
-      const subscribedListeners = es?._eventListeners.get(SSE_MESSAGE_TYPES.SUBSCRIBED);
+      const subscribedListeners = es?._eventListeners.get(
+        SSE_MESSAGE_TYPES.SUBSCRIBED,
+      );
       expect(subscribedListeners?.size).toBeGreaterThan(0);
 
       // Simulate the SUBSCRIBED event
@@ -239,9 +247,12 @@ describe('useJobSSE', () => {
 
     it('handles COMPLETED event and calls onComplete callback', async () => {
       const onComplete = vi.fn();
-      const { result } = renderHook(() => useJobSSE('job-123', { onComplete }), {
-        wrapper: createWrapper(),
-      });
+      const { result } = renderHook(
+        () => useJobSSE('job-123', { onComplete }),
+        {
+          wrapper: createWrapper(),
+        },
+      );
 
       await act(async () => {
         await vi.runAllTimersAsync();
@@ -395,7 +406,9 @@ describe('useJobSSE', () => {
       });
 
       // Should have created a new EventSource
-      expect(mockEventSourceInstances.length).toBeGreaterThan(instanceCountBefore);
+      expect(mockEventSourceInstances.length).toBeGreaterThan(
+        instanceCountBefore,
+      );
     });
 
     it('does not reconnect when job is in terminal state (COMPLETED)', async () => {
@@ -512,7 +525,9 @@ describe('useJobSSE', () => {
 
   describe('Parse Error Handling', () => {
     it('logs error details when parse fails', async () => {
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleSpy = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
 
       renderHook(() => useJobSSE('job-123'), {
         wrapper: createWrapper(),

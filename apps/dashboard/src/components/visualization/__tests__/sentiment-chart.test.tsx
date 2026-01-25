@@ -87,7 +87,6 @@ describe('SentimentChart', () => {
         expect.stringContaining('Net Sentiment Score: 30'),
       );
     });
-
   });
 
   describe('SentimentChartCompact', () => {

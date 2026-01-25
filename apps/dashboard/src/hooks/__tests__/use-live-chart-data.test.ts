@@ -276,8 +276,20 @@ describe('useLiveChartData', () => {
 
       const now = Math.floor(Date.now() / 1000);
       const mockChartData = [
-        { time: now as import('lightweight-charts').Time, value: 0.5, postCount: 1, totalPosts: 1, cumulativeAverage: 0.5 },
-        { time: (now + 1) as import('lightweight-charts').Time, value: 0.7, postCount: 1, totalPosts: 2, cumulativeAverage: 0.6 },
+        {
+          time: now as import('lightweight-charts').Time,
+          value: 0.5,
+          postCount: 1,
+          totalPosts: 1,
+          cumulativeAverage: 0.5,
+        },
+        {
+          time: (now + 1) as import('lightweight-charts').Time,
+          value: 0.7,
+          postCount: 1,
+          totalPosts: 2,
+          cumulativeAverage: 0.6,
+        },
       ];
 
       act(() => {

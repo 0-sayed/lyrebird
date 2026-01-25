@@ -41,7 +41,9 @@ describe('StatsSummary', () => {
     // The Average card has role="region" with aria-labelledby="stat-average"
     const averageCard = screen.getByRole('region', { name: 'Average' });
     // Within the Average card, find the em-dash with its aria-label
-    expect(within(averageCard).getByLabelText('No data available')).toHaveTextContent('—');
+    expect(
+      within(averageCard).getByLabelText('No data available'),
+    ).toHaveTextContent('—');
   });
 
   it('displays positive NSS with bullish label', () => {

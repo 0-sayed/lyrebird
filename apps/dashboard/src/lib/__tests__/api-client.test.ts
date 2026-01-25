@@ -98,7 +98,9 @@ describe('fetchAPI', () => {
 
   describe('validation behavior', () => {
     it('throws APIError with VALIDATION_ERROR code in development mode', async () => {
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleSpy = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
 
       // Return data that doesn't match the schema (missing required fields)
       server.use(
@@ -306,7 +308,9 @@ describe('API Methods', () => {
       server.use(
         http.post('/api/jobs', async ({ request }) => {
           capturedBody = (await request.json()) as { prompt: string };
-          return HttpResponse.json(createMockJob({ prompt: capturedBody.prompt }));
+          return HttpResponse.json(
+            createMockJob({ prompt: capturedBody.prompt }),
+          );
         }),
       );
 
@@ -330,7 +334,10 @@ describe('API Methods', () => {
 
   describe('getJobResults', () => {
     it('transforms results correctly', async () => {
-      const mockJob = createMockJob({ jobId: testUuid3, status: JobStatus.COMPLETED });
+      const mockJob = createMockJob({
+        jobId: testUuid3,
+        status: JobStatus.COMPLETED,
+      });
       const mockResults = createMockJobResults(testUuid3, 5);
       seedMockJob(mockJob, mockResults);
 
@@ -380,7 +387,10 @@ describe('API Methods', () => {
 
   describe('cancelJob', () => {
     it('sends POST to cancel endpoint', async () => {
-      const mockJob = createMockJob({ jobId: testUuid6, status: JobStatus.IN_PROGRESS });
+      const mockJob = createMockJob({
+        jobId: testUuid6,
+        status: JobStatus.IN_PROGRESS,
+      });
       seedMockJob(mockJob);
 
       const result = await api.cancelJob(testUuid6);
