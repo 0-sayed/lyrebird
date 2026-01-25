@@ -41,6 +41,8 @@ export interface JobResponse {
   averageSentiment?: number;
   dataPointsCount?: number;
   completedAt?: string;
+  /** Error message when job status is FAILED */
+  errorMessage?: string;
 }
 
 /**
