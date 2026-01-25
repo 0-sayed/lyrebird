@@ -222,20 +222,20 @@ const Sidebar = React.forwardRef<
     } = useSidebar();
     const hoverTimeoutRef = React.useRef<NodeJS.Timeout | undefined>(undefined);
 
-    // Handle hover behavior for collapsed sidebar
-    const handleMouseEnter = React.useCallback(() => {
+    // Handle hover/focus behavior for collapsed sidebar
+    const handleExpand = React.useCallback(() => {
       if (!isMobile && state === 'collapsed' && !isHoverTemporary) {
         // Clear any pending timeout
         if (hoverTimeoutRef.current) {
           clearTimeout(hoverTimeoutRef.current);
         }
-        // Mark as temporarily opened by hover
+        // Mark as temporarily opened by hover/focus
         setIsHoverTemporary(true);
         setOpen(true);
       }
     }, [isMobile, state, setOpen, isHoverTemporary, setIsHoverTemporary]);
 
-    const handleMouseLeave = React.useCallback(() => {
+    const handleCollapse = React.useCallback(() => {
       if (!isMobile && isHoverTemporary) {
         // Use a small timeout to prevent flickering when moving between sidebar elements
         hoverTimeoutRef.current = setTimeout(() => {
@@ -244,6 +244,19 @@ const Sidebar = React.forwardRef<
         }, 150);
       }
     }, [isMobile, isHoverTemporary, setOpen, setIsHoverTemporary]);
+
+    // Handle keyboard interaction for accessibility
+    const handleKeyDown = React.useCallback(
+      (event: React.KeyboardEvent) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          // Toggle permanent state instead of temporary hover state
+          setIsHoverTemporary(false);
+          setOpen(state === 'collapsed');
+        }
+      },
+      [setOpen, setIsHoverTemporary, state],
+    );
 
     // Cleanup timeout on unmount
     React.useEffect(() => {
@@ -301,8 +314,15 @@ const Sidebar = React.forwardRef<
         data-collapsible={state === 'collapsed' ? collapsible : ''}
         data-variant={variant}
         data-side={side}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
+        tabIndex={0}
+        role="navigation"
+        aria-label="Main sidebar"
+        aria-expanded={state === 'expanded'}
+        onMouseEnter={handleExpand}
+        onMouseLeave={handleCollapse}
+        onFocus={handleExpand}
+        onBlur={handleCollapse}
+        onKeyDown={handleKeyDown}
       >
         {/* This is what handles the sidebar gap on desktop */}
         <div
