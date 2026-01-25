@@ -102,7 +102,7 @@ export function useJobDataFlow({
           type: 'failed',
           jobId,
           query: activeJob.prompt,
-          error: 'Job failed',
+          error: activeJob.errorMessage ?? 'Job failed',
         });
       } else {
         setPhase({
@@ -137,7 +137,7 @@ export function useJobDataFlow({
       const historicalLiveDataPoints: LiveDataPoint[] = jobResults.data.map(
         (item) => ({
           item,
-          receivedAt: new Date(item.analyzedAt!).getTime(),
+          receivedAt: new Date(item.analyzedAt ?? Date.now()).getTime(),
         }),
       );
 
