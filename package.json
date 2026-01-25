@@ -129,6 +129,10 @@
     ],
     "rootDir": ".",
     "testRegex": ".*\\.(spec|integration\\.spec)\\.ts$",
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "/apps/dashboard/e2e/"
+    ],
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
