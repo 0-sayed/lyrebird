@@ -258,6 +258,5 @@ describe('Post Card Components', () => {
 
       expect(screen.getByText('+0.75')).toBeInTheDocument();
     });
-
   });
 });

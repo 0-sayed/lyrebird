@@ -118,7 +118,11 @@ describe('useAnalysisStats', () => {
             isJobCompleted: true,
             jobResults: {
               averageSentiment: 0.5,
-              sentimentDistribution: { positive: 60, neutral: 20, negative: 20 },
+              sentimentDistribution: {
+                positive: 60,
+                neutral: 20,
+                negative: 20,
+              },
               totalItems: 100,
             },
           }),
@@ -228,7 +232,11 @@ describe('useAnalysisStats', () => {
             isJobCompleted: true,
             jobResults: {
               averageSentiment: 0.5,
-              sentimentDistribution: { positive: 50, neutral: 30, negative: 20 },
+              sentimentDistribution: {
+                positive: 50,
+                neutral: 30,
+                negative: 20,
+              },
               totalItems: 100,
             },
           }),
@@ -264,7 +272,11 @@ describe('useAnalysisStats', () => {
             isJobCompleted: true,
             jobResults: {
               averageSentiment: 0.5,
-              sentimentDistribution: { positive: 50, neutral: 30, negative: 20 },
+              sentimentDistribution: {
+                positive: 50,
+                neutral: 30,
+                negative: 20,
+              },
               totalItems: 100,
             },
           }),
