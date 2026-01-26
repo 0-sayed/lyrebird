@@ -123,11 +123,7 @@ export function AnalysisView({
 
   // Update phase based on SSE status
   React.useEffect(() => {
-    let isMounted = true;
-
     if (sseJobStatus && currentJobId && phase.type === 'analyzing') {
-      if (!isMounted) return;
-
       if (sseJobStatus === JobStatus.COMPLETED) {
         setPhase({
           type: 'completed',
@@ -144,10 +140,6 @@ export function AnalysisView({
         });
       }
     }
-
-    return () => {
-      isMounted = false;
-    };
   }, [sseJobStatus, currentJobId, phase, onComplete, setPhase]);
 
   // Computed stats
