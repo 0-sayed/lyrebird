@@ -89,29 +89,3 @@ export function PostsSidebar({
   );
 }
 
-// =============================================================================
-// Skeleton
-// =============================================================================
-
-export function PostsSidebarSkeleton({ className }: { className?: string }) {
-  return (
-    <aside
-      className={cn(
-        'fixed right-0 top-0 z-10 h-full w-96 border-l bg-background shadow-lg',
-        className,
-      )}
-    >
-      <div className="flex h-full flex-col">
-        <div className="border-b px-4 py-3">
-          <div className="h-5 w-16 animate-pulse rounded bg-muted" />
-          <div className="mt-1 h-3 w-24 animate-pulse rounded bg-muted" />
-        </div>
-        <div className="flex-1 space-y-3 p-4">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="h-28 animate-pulse rounded-lg bg-muted" />
-          ))}
-        </div>
-      </div>
-    </aside>
-  );
-}

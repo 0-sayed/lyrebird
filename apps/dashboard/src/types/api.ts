@@ -81,30 +81,6 @@ export interface JobResultsResponse {
 }
 
 /**
- * Create job request payload
- */
-export interface CreateJobRequest {
-  prompt: string;
-  options?: {
-    job?: {
-      /** Total job duration in milliseconds */
-      maxDurationMs?: number;
-    };
-    maxPosts?: number;
-  };
-}
-
-/**
- * Create job response
- */
-export interface CreateJobResponse {
-  jobId: string;
-  status: JobStatus;
-  prompt: string;
-  createdAt: string;
-}
-
-/**
  * Paginated jobs list response
  */
 export interface JobsListResponse {
@@ -131,9 +107,6 @@ export const SSE_MESSAGE_TYPES = {
   HEARTBEAT: 'heartbeat',
   DATA_UPDATE: 'job.data_update',
 } as const;
-
-export type SSEMessageType =
-  (typeof SSE_MESSAGE_TYPES)[keyof typeof SSE_MESSAGE_TYPES];
 
 /**
  * SSE event: Job subscribed

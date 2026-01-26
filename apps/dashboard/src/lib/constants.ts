@@ -74,21 +74,3 @@ export const SENTIMENT_THRESHOLDS = {
   /** Score above this is positive (> 0.1), between is neutral */
   positive: 0.1,
 } as const;
-
-/**
- * Chart colors (HSL values matching CSS variables)
- */
-export const CHART_COLORS = {
-  positive: 'hsl(var(--chart-positive))',
-  neutral: 'hsl(var(--chart-neutral))',
-  negative: 'hsl(var(--chart-negative))',
-} as const;
-
-/**
- * Animation durations in ms
- */
-export const ANIMATION_DURATION = {
-  fast: 150,
-  normal: 300,
-  slow: 500,
-} as const;
