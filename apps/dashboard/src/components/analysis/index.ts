@@ -18,7 +18,7 @@ export {
   type LiveChartDataPoint,
 } from './sentiment-live-chart';
 export { StatsSummary, StatsSummarySkeleton } from './stats-summary';
-export { PostsSidebar, PostsSidebarSkeleton } from './posts-sidebar';
+export { PostsSidebar } from './posts-sidebar';
 export { AnalysisPostCard } from './analysis-post-card';
 export { AnalysisLoadingState } from './analysis-loading-state';
 export {

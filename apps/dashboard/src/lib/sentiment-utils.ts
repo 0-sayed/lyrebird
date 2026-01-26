@@ -91,36 +91,6 @@ export function getSentimentBgClass(label: SentimentLabel): string {
 }
 
 /**
- * Get hover-only background classes for a sentiment label.
- */
-export function getSentimentHoverBgClass(label: SentimentLabel): string {
-  return getSentimentStyles(label).hoverBg;
-}
-
-/**
- * Get hover-only border color classes for a sentiment label.
- */
-export function getSentimentHoverBorderClass(label: SentimentLabel): string {
-  return getSentimentStyles(label).hoverBorder;
-}
-
-/**
- * Get focus-visible ring classes for a sentiment label.
- */
-export function getSentimentFocusVisibleRingClass(
-  label: SentimentLabel,
-): string {
-  return getSentimentStyles(label).focusVisibleRing;
-}
-
-/**
- * Get focus ring classes for a sentiment label.
- */
-export function getSentimentFocusRingClass(label: SentimentLabel): string {
-  return getSentimentStyles(label).focusRing;
-}
-
-/**
  * Format a sentiment score as a signed decimal string
  *
  * @param score - Sentiment score between -1 and +1
