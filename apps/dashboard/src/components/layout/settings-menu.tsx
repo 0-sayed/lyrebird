@@ -34,6 +34,7 @@ export function SettingsMenu() {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <SidebarMenuButton
+          data-testid="settings-menu"
           aria-label="Settings"
           className="aspect-square w-9 justify-center rounded-full p-0"
         >
@@ -44,6 +45,7 @@ export function SettingsMenu() {
       <DropdownMenuContent side="top" align="start" className="min-w-0 p-1">
         <DropdownMenuSub>
           <DropdownMenuSubTrigger
+            data-testid="theme-toggle"
             aria-label="Theme"
             className={cn(
               'h-9 w-9 justify-center rounded-md px-0 py-0 cursor-pointer',

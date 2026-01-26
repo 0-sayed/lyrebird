@@ -84,16 +84,17 @@ export function PostsList({
         )}
       </div>
 
-      <div className="space-y-2" role="list" aria-label="Analyzed posts">
+      <ul className="space-y-2 list-none p-0" aria-label="Analyzed posts">
         {displayedPosts.map((post) => (
-          <PostCard
-            key={post.id}
-            post={post}
-            expanded={expandedPosts.has(post.id)}
-            onToggleExpand={() => togglePostExpansion(post.id)}
-          />
+          <li key={post.id}>
+            <PostCard
+              post={post}
+              expanded={expandedPosts.has(post.id)}
+              onToggleExpand={() => togglePostExpansion(post.id)}
+            />
+          </li>
         ))}
-      </div>
+      </ul>
 
       {!showAll && hasMore && (
         <Button
