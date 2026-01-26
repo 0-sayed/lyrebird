@@ -2,7 +2,7 @@
  * API Types - Mirrored from backend for type safety
  *
  * These types are copied from the backend to maintain consistency.
- * TODO: In the future, consider creating a shared package with Zod schemas
+ * Note: In the future, consider creating a shared package with Zod schemas
  * that can be used by both frontend and backend (Option B in the spec).
  *
  * @see libs/shared-types/src/message-types.ts
