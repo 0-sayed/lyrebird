@@ -1,7 +1,26 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  vi,
+  type Mock,
+} from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 
 import { useIsMobile } from '../use-mobile';
+
+interface MockMediaQueryList {
+  matches: boolean;
+  media: string;
+  addEventListener: Mock;
+  removeEventListener: Mock;
+  onchange: null;
+  addListener: Mock;
+  removeListener: Mock;
+  dispatchEvent: Mock;
+}
 
 describe('useIsMobile', () => {
   const originalInnerWidth = window.innerWidth;
@@ -125,7 +144,8 @@ describe('useIsMobile', () => {
     const { unmount } = renderHook(() => useIsMobile());
 
     // Get the mock instance
-    const mqlInstance = mockMatchMedia.mock.results[0]?.value;
+    const mqlInstance = mockMatchMedia.mock.results[0]
+      ?.value as MockMediaQueryList;
 
     // Verify addEventListener was called
     expect(mqlInstance.addEventListener).toHaveBeenCalledWith(

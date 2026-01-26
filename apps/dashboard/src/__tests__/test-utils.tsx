@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, type RenderOptions } from '@testing-library/react';
-import { type ReactElement, type ReactNode } from 'react';
+import { type ReactElement, type ReactNode, useState } from 'react';
 
 import { ThemeProvider } from '@/providers/theme-provider';
 import { JobStatus, SentimentLabel, type SentimentDataItem } from '@/types/api';
@@ -41,7 +41,7 @@ interface WrapperProps {
  * All providers wrapper for testing
  */
 function AllProviders({ children }: WrapperProps) {
-  const queryClient = createTestQueryClient();
+  const [queryClient] = useState(() => createTestQueryClient());
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -137,13 +137,16 @@ export function createMockSentimentItems(
     let score: number;
     switch (scoreDistribution) {
       case 'positive':
-        score = 0.3 + Math.random() * 0.7; // 0.3 to 1.0
+        // Deterministic: spread evenly from 0.3 to 1.0 based on index
+        score = 0.3 + ((i % 10) / 10) * 0.7;
         break;
       case 'negative':
-        score = -0.3 - Math.random() * 0.7; // -0.3 to -1.0
+        // Deterministic: spread evenly from -0.3 to -1.0 based on index
+        score = -0.3 - ((i % 10) / 10) * 0.7;
         break;
       case 'neutral':
-        score = -0.1 + Math.random() * 0.2; // -0.1 to 0.1
+        // Deterministic: spread evenly from -0.1 to 0.1 based on index
+        score = -0.1 + ((i % 10) / 10) * 0.2;
         break;
       default:
         // Varied: cycle through positive, neutral, negative

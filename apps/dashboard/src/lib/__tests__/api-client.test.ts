@@ -44,7 +44,7 @@ describe('fetchAPI', () => {
       let capturedHeaders: Headers | undefined;
 
       server.use(
-        http.post('/api/jobs', async ({ request }) => {
+        http.post('/api/jobs', ({ request }) => {
           capturedHeaders = request.headers;
           return HttpResponse.json(createMockJob());
         }),
@@ -127,8 +127,8 @@ describe('fetchAPI', () => {
       expect(consoleSpy).toHaveBeenCalledWith(
         'API response validation failed:',
         expect.objectContaining({
-          endpoint: expect.stringContaining('/jobs/'),
-          error: expect.anything(),
+          endpoint: expect.stringContaining('/jobs/') as unknown,
+          error: expect.anything() as unknown,
         }),
       );
 

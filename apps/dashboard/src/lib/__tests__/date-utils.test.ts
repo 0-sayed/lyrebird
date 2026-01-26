@@ -64,10 +64,12 @@ describe('formatRelativeTime', () => {
   });
 
   it('returns formatted date for timestamps >= 7 days', () => {
+    const sevenDaysAgo = new Date(Date.now() - 7 * DAY);
+    const expectedDay = sevenDaysAgo.getDate();
     const result = formatRelativeTime(msAgo(7 * DAY));
-    // Should return a localized date like "Jan 18"
+    // Should return a localized date like "Jan 18" (day depends on timezone)
     expect(result).toMatch(/Jan/);
-    expect(result).toMatch(/18/);
+    expect(result).toContain(String(expectedDay));
   });
 
   describe('suffix option', () => {
@@ -104,25 +106,31 @@ describe('formatRelativeTime', () => {
   describe('showYear option', () => {
     it('does not include year for same year dates', () => {
       // 24 days ago, still in 2026
+      const twentyFourDaysAgo = new Date(Date.now() - 24 * DAY);
+      const expectedDay = twentyFourDaysAgo.getDate();
       const result = formatRelativeTime(msAgo(24 * DAY), { showYear: true });
       expect(result).toMatch(/Jan/);
-      expect(result).toMatch(/1/);
+      expect(result).toContain(String(expectedDay));
       expect(result).not.toMatch(/2026/);
     });
 
     it('includes year for different year dates when showYear is true', () => {
-      // 31 days ago = Dec 25, 2025
+      // 31 days ago (Dec 2025, exact day depends on timezone)
+      const thirtyOneDaysAgo = new Date(Date.now() - 31 * DAY);
+      const expectedDay = thirtyOneDaysAgo.getDate();
       const result = formatRelativeTime(msAgo(31 * DAY), { showYear: true });
       expect(result).toMatch(/Dec/);
-      expect(result).toMatch(/25/);
+      expect(result).toContain(String(expectedDay));
       expect(result).toMatch(/2025/);
     });
 
     it('does not include year for different year dates when showYear is false', () => {
-      // 31 days ago = Dec 25, 2025
+      // 31 days ago (Dec 2025, exact day depends on timezone)
+      const thirtyOneDaysAgo = new Date(Date.now() - 31 * DAY);
+      const expectedDay = thirtyOneDaysAgo.getDate();
       const result = formatRelativeTime(msAgo(31 * DAY), { showYear: false });
       expect(result).toMatch(/Dec/);
-      expect(result).toMatch(/25/);
+      expect(result).toContain(String(expectedDay));
       expect(result).not.toMatch(/2025/);
     });
   });
