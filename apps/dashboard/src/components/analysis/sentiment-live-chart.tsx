@@ -253,7 +253,11 @@ export function SentimentLiveChartSkeleton({
   className?: string;
 }) {
   return (
-    <div className={cn('w-full', className)}>
+    <div
+      className={cn('w-full', className)}
+      role="status"
+      aria-label="Loading chart"
+    >
       <div className="mb-2 flex items-center justify-between">
         <div className="h-4 w-48 animate-pulse rounded bg-muted/40" />
         <div className="h-4 w-32 animate-pulse rounded bg-muted/40" />

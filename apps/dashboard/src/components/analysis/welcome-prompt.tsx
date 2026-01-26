@@ -205,6 +205,7 @@ export function WelcomePrompt({
           <div className="flex flex-wrap justify-center gap-2">
             {EXAMPLE_PROMPTS.map((example) => (
               <button
+                type="button"
                 key={example}
                 onClick={() => handleExampleClick(example)}
                 disabled={isLoading}

@@ -15,7 +15,11 @@ import { StatsSummarySkeleton } from './stats-summary';
  */
 export function AnalysisLoadingState() {
   return (
-    <div className="flex-1 px-6 py-6">
+    <div
+      className="flex-1 px-6 py-6"
+      role="status"
+      aria-label="Loading analysis"
+    >
       <div className="mx-auto max-w-5xl space-y-6">
         {/* Header skeleton */}
         <div className="animate-pulse space-y-2">
