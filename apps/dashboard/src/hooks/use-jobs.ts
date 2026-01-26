@@ -97,7 +97,7 @@ export function useCreateJob() {
     mutationFn: ({ prompt }) => api.createJob(prompt),
     onSuccess: (newJob) => {
       // Invalidate jobs list to refetch
-      queryClient.invalidateQueries({ queryKey: queryKeys.jobs.lists() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.jobs.lists() });
 
       // Optimistically add the new job to cache
       queryClient.setQueryData(queryKeys.jobs.detail(newJob.jobId), newJob);
