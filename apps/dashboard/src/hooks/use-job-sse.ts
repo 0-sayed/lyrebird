@@ -119,6 +119,10 @@ export function useJobSSE(
   const [lastHeartbeat, setLastHeartbeat] = useState<Date | null>(null);
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
 
+  // Store jobStatus and reconnectAttempts in refs to avoid stale closures in onerror handler
+  const jobStatusRef = useRef<JobStatus | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+
   // Store callbacks in refs to avoid stale closures
   const callbacksRef = useRef({
     onComplete,
@@ -134,6 +138,15 @@ export function useJobSSE(
       onDataUpdate,
     };
   }, [onComplete, onFailed, onStatusChange, onDataUpdate]);
+
+  // Keep refs in sync with state for onerror handler
+  useEffect(() => {
+    jobStatusRef.current = jobStatus;
+  }, [jobStatus]);
+
+  useEffect(() => {
+    reconnectAttemptsRef.current = reconnectAttempts;
+  }, [reconnectAttempts]);
 
   /**
    * Handle incoming SSE events
@@ -152,7 +165,7 @@ export function useJobSSE(
           setJobStatus(event.data.status);
           callbacksRef.current.onStatusChange?.(event.data.status);
           // Invalidate job query to get updated data
-          queryClient.invalidateQueries({
+          void queryClient.invalidateQueries({
             queryKey: queryKeys.jobs.detail(event.data.jobId),
           });
           break;
@@ -162,13 +175,13 @@ export function useJobSSE(
           setJobStatus(JobStatus.COMPLETED);
           callbacksRef.current.onComplete?.(event.data);
           // Invalidate job and results to fetch final data
-          queryClient.invalidateQueries({
+          void queryClient.invalidateQueries({
             queryKey: queryKeys.jobs.detail(event.data.jobId),
           });
-          queryClient.invalidateQueries({
+          void queryClient.invalidateQueries({
             queryKey: queryKeys.jobs.results(event.data.jobId),
           });
-          queryClient.invalidateQueries({
+          void queryClient.invalidateQueries({
             queryKey: queryKeys.jobs.lists(),
           });
           break;
@@ -178,10 +191,10 @@ export function useJobSSE(
           setJobStatus(JobStatus.FAILED);
           callbacksRef.current.onFailed?.(event.data);
           // Invalidate to show error state
-          queryClient.invalidateQueries({
+          void queryClient.invalidateQueries({
             queryKey: queryKeys.jobs.detail(event.data.jobId),
           });
-          queryClient.invalidateQueries({
+          void queryClient.invalidateQueries({
             queryKey: queryKeys.jobs.lists(),
           });
           toast.error('Analysis failed', {
@@ -282,7 +295,7 @@ export function useJobSSE(
         if (import.meta.env.DEV) {
           console.error('Failed to parse SSE event:', {
             eventType,
-            rawData: event.data,
+            rawData: event.data as string,
             error,
           });
         }
@@ -310,7 +323,12 @@ export function useJobSSE(
       eventSourceRef.current = null;
 
       // Don't reconnect if job is completed or failed
-      if (jobStatus === JobStatus.COMPLETED || jobStatus === JobStatus.FAILED) {
+      // Use ref to get latest value and avoid stale closure
+      const currentJobStatus = jobStatusRef.current;
+      if (
+        currentJobStatus === JobStatus.COMPLETED ||
+        currentJobStatus === JobStatus.FAILED
+      ) {
         setConnectionStatus('disconnected');
         return;
       }
@@ -318,8 +336,10 @@ export function useJobSSE(
       setConnectionStatus('error');
 
       // Attempt reconnection with exponential backoff
-      if (reconnectAttempts < SSE_CONFIG.maxReconnectAttempts) {
-        const delay = getReconnectDelay(reconnectAttempts);
+      // Use ref to get latest value and avoid stale closure
+      const currentAttempts = reconnectAttemptsRef.current;
+      if (currentAttempts < SSE_CONFIG.maxReconnectAttempts) {
+        const delay = getReconnectDelay(currentAttempts);
         setReconnectAttempts((prev) => prev + 1);
 
         reconnectTimeoutRef.current = setTimeout(() => {
@@ -332,15 +352,7 @@ export function useJobSSE(
         });
       }
     };
-  }, [
-    jobId,
-    enabled,
-    disconnect,
-    handleEvent,
-    jobStatus,
-    reconnectAttempts,
-    getReconnectDelay,
-  ]);
+  }, [jobId, enabled, disconnect, handleEvent, getReconnectDelay]);
 
   /**
    * Manually trigger reconnection

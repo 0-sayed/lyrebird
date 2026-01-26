@@ -187,11 +187,14 @@ export function HistoryList({
   const deleteJob = useDeleteJob();
 
   const handleDelete = (jobId: string) => {
-    // If deleting the active job, notify parent to clear it
-    if (jobId === activeJobId) {
-      onJobDeleted?.(jobId);
-    }
-    deleteJob.mutate(jobId);
+    deleteJob.mutate(jobId, {
+      onSuccess: () => {
+        // Only notify parent to clear active job AFTER delete succeeds
+        if (jobId === activeJobId) {
+          onJobDeleted?.(jobId);
+        }
+      },
+    });
   };
 
   if (isLoading) {
