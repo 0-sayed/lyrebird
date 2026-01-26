@@ -1,4 +1,6 @@
 {
+  "include": ["apps/gateway", "apps/ingestion", "apps/analysis", "libs"],
+  "exclude": ["apps/dashboard", "node_modules", "dist"],
   "compilerOptions": {
     "module": "nodenext",
     "moduleResolution": "nodenext",
