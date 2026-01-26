@@ -127,7 +127,7 @@ export function useDeleteJob() {
       queryClient.removeQueries({ queryKey: queryKeys.jobs.detail(jobId) });
       queryClient.removeQueries({ queryKey: queryKeys.jobs.results(jobId) });
       // Invalidate lists to refetch
-      queryClient.invalidateQueries({ queryKey: queryKeys.jobs.lists() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.jobs.lists() });
 
       toast.success('Job deleted');
     },
