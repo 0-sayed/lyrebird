@@ -142,6 +142,7 @@
     "collectCoverageFrom": [
       "apps/**/*.ts",
       "libs/**/*.ts",
+      "!apps/dashboard/**",
       "!**/*.module.ts",
       "!**/main.ts",
       "!**/*.d.ts",
