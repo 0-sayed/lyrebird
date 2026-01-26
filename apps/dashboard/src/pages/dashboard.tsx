@@ -34,7 +34,9 @@ function persistJobId(jobId: string | null): void {
       window.localStorage.removeItem(STORAGE_KEYS.LAST_JOB_ID);
     }
   } catch (error) {
-    console.warn('Error persisting job ID:', error);
+    if (import.meta.env.DEV) {
+      console.warn('Error persisting job ID:', error);
+    }
   }
 }
 

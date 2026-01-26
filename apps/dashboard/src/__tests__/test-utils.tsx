@@ -1,4 +1,4 @@
-/* eslint-disable react-refresh/only-export-components */
+/* eslint-disable react-refresh/only-export-components -- Test utilities intentionally export non-components (render helpers, mock factories). HMR is not relevant for test files. */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, type RenderOptions } from '@testing-library/react';
 import { type ReactElement, type ReactNode, useState } from 'react';

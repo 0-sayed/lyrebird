@@ -145,7 +145,7 @@ export function SentimentLiveChart({
     };
     // Note: We intentionally omit isDarkMode from deps to avoid recreating the chart on theme change.
     // Theme changes are handled by a separate useEffect that calls applyOptions().
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- isDarkMode intentionally omitted; theme handled by separate useEffect
   }, [height]); // Only recreate on height change
 
   // Update theme
@@ -182,7 +182,7 @@ export function SentimentLiveChart({
       .filter((point) => point.cumulativeAverage !== undefined)
       .map((point) => ({
         time: point.time,
-        value: point.cumulativeAverage!,
+        value: point.cumulativeAverage ?? 0,
       }));
 
     sentimentSeriesRef.current.setData(sentimentData);
