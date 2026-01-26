@@ -1,24 +1,32 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Accessibility', () => {
+  // Skip sidebar-dependent tests on mobile viewports
+  test.skip(
+    ({ viewport }) => (viewport?.width ?? 1280) < 768,
+    'Accessibility tests require desktop viewport for sidebar access',
+  );
+
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
   });
 
   test('should have proper heading structure', async ({ page }) => {
     // Main heading should exist
-    const mainHeading = page.getByRole('heading', { level: 2 });
+    const mainHeading = page.getByRole('heading', { level: 1 });
     await expect(mainHeading).toBeVisible();
   });
 
   test('should have accessible button labels', async ({ page }) => {
-    // Theme toggle should have accessible name
-    const themeToggle = page.getByRole('button', { name: /toggle theme/i });
-    await expect(themeToggle).toBeVisible();
+    // Settings menu should have accessible name
+    const settingsMenu = page.getByTestId('settings-menu');
+    await expect(settingsMenu).toBeVisible();
 
-    // New chat button should have accessible name
-    const newChatButton = page.getByRole('button', { name: /new chat/i });
-    await expect(newChatButton).toBeVisible();
+    // New analysis button should have accessible name
+    const newAnalysisButton = page.getByRole('button', {
+      name: /new analysis/i,
+    });
+    await expect(newAnalysisButton).toBeVisible();
   });
 
   test('should support keyboard navigation', async ({ page }) => {
@@ -44,11 +52,11 @@ test.describe('Accessibility', () => {
   });
 
   test('should have visible focus indicators', async ({ page }) => {
-    const themeToggle = page.getByTestId('theme-toggle');
+    const settingsMenu = page.getByTestId('settings-menu');
 
     // Focus the button
-    await themeToggle.focus();
-    await expect(themeToggle).toBeFocused();
+    await settingsMenu.focus();
+    await expect(settingsMenu).toBeFocused();
 
     // Focus ring should be visible (checking for outline/ring CSS)
     // This is a visual check - we verify the element is focused
@@ -58,30 +66,36 @@ test.describe('Accessibility', () => {
     page,
   }) => {
     // Dropdown menu trigger should have proper attributes
-    const themeToggle = page.getByTestId('theme-toggle');
-    await expect(themeToggle).toHaveAttribute('aria-haspopup', /.*/);
+    const settingsMenu = page.getByTestId('settings-menu');
+    await expect(settingsMenu).toHaveAttribute('aria-haspopup', /.*/);
   });
 
   test('color contrast should be sufficient in light mode', async ({
     page,
   }) => {
-    // Set light theme
-    const themeToggle = page.getByTestId('theme-toggle');
-    await themeToggle.click();
+    // Set light theme via settings menu
+    const settingsMenu = page.getByTestId('settings-menu');
+    await settingsMenu.click();
+    await page.getByTestId('theme-toggle').hover();
     await page.getByRole('menuitem', { name: /light/i }).click();
 
     // Text should be visible (this is a smoke test, not a full contrast check)
-    await expect(page.getByText('Welcome to Lyrebird')).toBeVisible();
+    await expect(
+      page.getByText('What would you like to analyze today?'),
+    ).toBeVisible();
   });
 
   test('color contrast should be sufficient in dark mode', async ({ page }) => {
-    // Set dark theme
-    const themeToggle = page.getByTestId('theme-toggle');
-    await themeToggle.click();
+    // Set dark theme via settings menu
+    const settingsMenu = page.getByTestId('settings-menu');
+    await settingsMenu.click();
+    await page.getByTestId('theme-toggle').hover();
     await page.getByRole('menuitem', { name: /dark/i }).click();
 
     // Text should be visible
-    await expect(page.getByText('Welcome to Lyrebird')).toBeVisible();
+    await expect(
+      page.getByText('What would you like to analyze today?'),
+    ).toBeVisible();
   });
 });
 
@@ -107,18 +121,16 @@ test.describe('Screen Reader Support', () => {
     await promptInput.fill('Test query');
 
     // Submit (if button exists and is enabled)
-    const submitButton = page.getByRole('button', { name: /analyze|send/i });
+    const submitButton = page.getByRole('button', { name: /start analysis/i });
     if (await submitButton.isEnabled()) {
       // The typing indicator should have aria-label when shown
       // This is validated by the component tests
     }
   });
 
-  test('should have proper list semantics for suggestions', async ({
-    page,
-  }) => {
-    // Suggestion cards should be accessible
-    const searchCard = page.getByText('Search Topics');
-    await expect(searchCard).toBeVisible();
+  test('should have proper feature hints', async ({ page }) => {
+    // Feature hints should be accessible
+    const featureHint = page.getByText('Real-time analysis');
+    await expect(featureHint).toBeVisible();
   });
 });
