@@ -1,7 +1,7 @@
 # Dependencies
 node_modules/
-/dist
-/build
+dist/
+build/
 .pnpm-debug.log*
 
 # Environment / Secrets
@@ -22,8 +22,10 @@ yarn-error.log*
 lerna-debug.log*
 
 # Testing
-/coverage
+coverage/
 /.nyc_output
+playwright-report/
+test-results/
 
 # IDEs and Editors
 .vscode/*
