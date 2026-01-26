@@ -208,7 +208,7 @@ export const handlers = [
   }),
 
   // POST /api/jobs/:id/cancel - Cancel a job
-  http.post('/api/jobs/:id/cancel', async ({ params }) => {
+  http.post('/api/jobs/:id/cancel', ({ params }) => {
     const job = mockJobs.get(params.id as string);
     if (!job) {
       return HttpResponse.json(
@@ -221,7 +221,7 @@ export const handlers = [
   }),
 
   // DELETE /api/jobs/:id - Delete a job
-  http.delete('/api/jobs/:id', async ({ params }) => {
+  http.delete('/api/jobs/:id', ({ params }) => {
     const deleted = mockJobs.delete(params.id as string);
     mockResults.delete(params.id as string);
     if (!deleted) {
