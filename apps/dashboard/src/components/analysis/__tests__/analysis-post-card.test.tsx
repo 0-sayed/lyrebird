@@ -481,8 +481,8 @@ describe('AnalysisPostCard', () => {
       render(<AnalysisPostCard post={post} />);
 
       // Content should be sanitized and rendered safely
-      // The sanitizer should strip script tags
-      expect(screen.queryByText(/<script>/)).not.toBeInTheDocument();
+      // The sanitizer should strip script tags (case-insensitive check)
+      expect(screen.queryByText(/<script>/i)).not.toBeInTheDocument();
     });
 
     it('does nothing when no onClick and no sourceUrl', async () => {
