@@ -7,6 +7,8 @@ import {
   convertResultsToChartData,
   convertToLiveChartData,
 } from '@/lib/chart-utils';
+import { STORAGE_KEYS } from '@/lib/constants';
+import { APIError } from '@/lib/api-client';
 import { JobStatus } from '@/types/api';
 
 // =============================================================================
@@ -65,7 +67,11 @@ export function useJobDataFlow({
   const normalizedJobId = jobId ?? undefined;
 
   // Query for job data
-  const { data: activeJob, isLoading: isJobLoading } = useJob(normalizedJobId, {
+  const {
+    data: activeJob,
+    isLoading: isJobLoading,
+    error: jobError,
+  } = useJob(normalizedJobId, {
     enabled: Boolean(normalizedJobId),
     refetchInterval: (query) => {
       const status = query.state.data?.status;
@@ -74,6 +80,13 @@ export function useJobDataFlow({
       }
       return false;
     },
+    retry: (failureCount, error) => {
+      // Don't retry 404 errors - job doesn't exist
+      if (error instanceof APIError && error.statusCode === 404) {
+        return false;
+      }
+      return failureCount < 3;
+    },
   });
 
   // Query for results
@@ -81,8 +94,33 @@ export function useJobDataFlow({
     normalizedJobId,
     {
       enabled: Boolean(normalizedJobId),
+      retry: (failureCount, error) => {
+        // Don't retry 404 errors - job doesn't exist
+        if (error instanceof APIError && error.statusCode === 404) {
+          return false;
+        }
+        return failureCount < 3;
+      },
     },
   );
+
+  // Handle 404 error - job not found (stale localStorage reference)
+  React.useEffect(() => {
+    if (
+      jobError instanceof APIError &&
+      jobError.statusCode === 404 &&
+      phase.type === 'loading'
+    ) {
+      // Clear the stale job ID from localStorage
+      try {
+        window.localStorage.removeItem(STORAGE_KEYS.LAST_JOB_ID);
+      } catch {
+        // Ignore localStorage errors
+      }
+      // Reset to initial state
+      setPhase({ type: 'initial' });
+    }
+  }, [jobError, phase.type, setPhase]);
 
   // Load initial job if provided
   React.useEffect(() => {

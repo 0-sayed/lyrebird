@@ -444,4 +444,69 @@ describe('useJobDataFlow', () => {
       expect(result.current).toHaveProperty('isLoading');
     });
   });
+
+  // ===========================================================================
+  // Error Handling - 404 Not Found
+  // ===========================================================================
+
+  describe('Error Handling - 404 Not Found', () => {
+    it('resets to initial phase when job not found (404)', async () => {
+      const jobId = '550e8400-e29b-41d4-a716-446655440099'; // Non-existent job
+      const setPhase = vi.fn();
+
+      // Mock localStorage
+      const mockRemoveItem = vi.fn();
+      vi.spyOn(window.localStorage, 'removeItem').mockImplementation(
+        mockRemoveItem,
+      );
+
+      renderHook(
+        () =>
+          useJobDataFlow(
+            createDefaultOptions({
+              jobId,
+              phase: { type: 'loading', jobId }, // Start in loading phase
+              setPhase,
+            }),
+          ),
+        { wrapper: createWrapper() },
+      );
+
+      // Wait for the 404 error to be handled
+      await waitFor(() => {
+        expect(setPhase).toHaveBeenCalledWith({ type: 'initial' });
+      });
+
+      // Should have cleared localStorage
+      expect(mockRemoveItem).toHaveBeenCalledWith('lyrebird-last-job-id');
+
+      // Restore localStorage
+      vi.restoreAllMocks();
+    });
+
+    it('does not reset phase if not in loading state when 404 occurs', async () => {
+      const jobId = '550e8400-e29b-41d4-a716-446655440098'; // Non-existent job
+      const setPhase = vi.fn();
+
+      renderHook(
+        () =>
+          useJobDataFlow(
+            createDefaultOptions({
+              jobId,
+              phase: { type: 'analyzing', jobId, query: 'test' }, // Not in loading phase
+              setPhase,
+            }),
+          ),
+        { wrapper: createWrapper() },
+      );
+
+      // Wait for queries to settle
+      await waitFor(() => {
+        // Give time for effects to run
+      });
+
+      // Should NOT reset to initial since we're not in loading phase
+      expect(setPhase).not.toHaveBeenCalledWith({ type: 'initial' });
+    });
+  });
 });
