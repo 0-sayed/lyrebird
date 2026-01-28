@@ -11,15 +11,33 @@ export class SentimentDataRepository {
 
   /**
    * Create a new sentiment data record
+   * Uses ON CONFLICT DO NOTHING to skip duplicate posts (same job_id + source_url + published_at)
+   * Note: TimescaleDB hypertables require unique indexes to include the partitioning column
+   * @returns The created record, or null if it was a duplicate
    */
-  async create(data: NewSentimentData): Promise<SentimentData> {
-    const [record] = await this.databaseService.db
+  async create(data: NewSentimentData): Promise<SentimentData | null> {
+    const result = await this.databaseService.db
       .insert(sentimentData)
       .values(data)
+      .onConflictDoNothing({
+        target: [
+          sentimentData.jobId,
+          sentimentData.sourceUrl,
+          sentimentData.publishedAt,
+        ],
+      })
       .returning();
 
-    this.logger.debug(`Created sentiment data: ${record.id}`);
-    return record;
+    const record = result[0];
+    if (record) {
+      this.logger.debug(`Created sentiment data: ${record.id}`);
+      return record;
+    } else {
+      this.logger.debug(
+        `Skipped duplicate sentiment data for job ${data.jobId}: ${data.sourceUrl}`,
+      );
+      return null;
+    }
   }
 
   /**
@@ -87,5 +105,21 @@ export class SentimentDataRepository {
       .groupBy(sentimentData.sentimentLabel);
 
     return results;
+  }
+
+  /**
+   * Delete all sentiment data for a job
+   * @returns The number of deleted records
+   */
+  async deleteByJobId(jobId: string): Promise<number> {
+    const deleted = await this.databaseService.db
+      .delete(sentimentData)
+      .where(eq(sentimentData.jobId, jobId))
+      .returning();
+
+    this.logger.debug(
+      `Deleted ${deleted.length} sentiment data records for job ${jobId}`,
+    );
+    return deleted.length;
   }
 }
