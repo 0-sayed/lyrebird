@@ -69,7 +69,9 @@ export class HealthController {
         bert: {
           ready: bertStatus.ready,
           provider: bertStatus.provider,
-          huggingfaceConfigured: bertStatus.huggingfaceConfigured,
+          modelLoaded: bertStatus.modelLoaded,
+          modelName: bertStatus.modelName,
+          quantization: bertStatus.quantization,
           error: bertStatus.error,
         },
       },
