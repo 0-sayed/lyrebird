@@ -28,10 +28,13 @@ const mockRabbitmqService = createMockRabbitmqService();
 const mockDatabaseService = createMockDatabaseService();
 const mockBertSentimentService = createMockBertSentimentService();
 
-// Mock ConfigService - returns undefined for HUGGINGFACE_API_KEY to force AFINN mode in tests
-// This avoids external API calls during E2E testing
+// Mock ConfigService for local ONNX tests
 const mockConfigService = {
-  get: jest.fn().mockReturnValue(undefined),
+  get: jest.fn((key: string) => {
+    if (key === 'ML_MODEL_CACHE_DIR') return './.models-cache-test';
+    if (key === 'ML_QUANTIZATION') return 'q8';
+    return undefined;
+  }),
 };
 
 describe('AnalysisController (e2e)', () => {
@@ -119,24 +122,24 @@ describe('AnalysisController (e2e)', () => {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         expect(res.body.checks.bert).toHaveProperty('ready', true);
         // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-        expect(res.body.checks.bert).toHaveProperty('provider', 'afinn');
+        expect(res.body.checks.bert).toHaveProperty('provider', 'local-onnx');
       });
   });
 });
 
-describe('BertSentimentService E2E', () => {
+describe('BertSentimentService E2E (mocked)', () => {
   let service: BertSentimentService;
   let moduleFixture: TestingModule;
 
   beforeEach(async () => {
-    const mockConfigService = {
-      get: jest.fn().mockReturnValue(undefined), // No API key = AFINN mode
-    };
-
+    // Use mock service from @app/testing for E2E tests
+    // Real ONNX model tests are in bert-sentiment-integration.spec.ts
     moduleFixture = await Test.createTestingModule({
       providers: [
-        BertSentimentService,
-        { provide: ConfigService, useValue: mockConfigService },
+        {
+          provide: BertSentimentService,
+          useValue: createMockBertSentimentService(),
+        },
       ],
     }).compile();
 
@@ -147,38 +150,24 @@ describe('BertSentimentService E2E', () => {
     await moduleFixture.close();
   });
 
-  describe('AFINN mode (no API key)', () => {
+  describe('mock service behavior', () => {
     it('should be ready immediately', () => {
       expect(service.isReady()).toBe(true);
     });
 
-    it('should report AFINN provider in status', () => {
+    it('should report local-onnx provider in status', () => {
       const status = service.getStatus();
-      expect(status.provider).toBe('afinn');
-      expect(status.huggingfaceConfigured).toBe(false);
+      expect(status.provider).toBe('local-onnx');
+      expect(status.modelLoaded).toBe(true);
     });
 
-    it('should analyze positive text correctly', async () => {
-      const result = await service.analyze('I love this amazing product!');
+    it('should analyze text using mock', async () => {
+      const result = await service.analyze('Test text');
 
-      expect(result.source).toBe('afinn');
-      expect(result.label).toBe('positive');
-      expect(result.score).toBeGreaterThan(0.5);
-    });
-
-    it('should analyze negative text correctly', async () => {
-      const result = await service.analyze('This is terrible and awful!');
-
-      expect(result.source).toBe('afinn');
-      expect(result.label).toBe('negative');
-      expect(result.score).toBeLessThan(0.5);
-    });
-
-    it('should handle empty text gracefully', async () => {
-      const result = await service.analyze('');
-
-      expect(result.source).toBe('afinn');
-      expect(result.score).toBeCloseTo(0.5, 1);
+      expect(result.source).toBe('local-onnx');
+      expect(result).toHaveProperty('score');
+      expect(result).toHaveProperty('label');
+      expect(result).toHaveProperty('confidence');
     });
   });
 });
