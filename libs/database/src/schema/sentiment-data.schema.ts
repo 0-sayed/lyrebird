@@ -6,6 +6,7 @@ import {
   integer,
   timestamp,
   primaryKey,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { jobs } from './jobs.schema';
 
@@ -60,6 +61,13 @@ export const sentimentData = pgTable(
   (table) => ({
     // Composite primary key required for TimescaleDB hypertable
     pk: primaryKey({ columns: [table.id, table.publishedAt] }),
+    // Prevent duplicate posts within the same job
+    // Note: TimescaleDB hypertables require unique indexes to include the partitioning column (publishedAt)
+    uniqueJobSourceUrl: uniqueIndex('sentiment_data_job_id_source_url_idx').on(
+      table.jobId,
+      table.sourceUrl,
+      table.publishedAt,
+    ),
   }),
 );
 
