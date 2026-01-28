@@ -18,7 +18,16 @@ async function bootstrap() {
   const rabbitmqUrl = buildRabbitMqUrl();
   const queue = RABBITMQ_CONSTANTS.QUEUES.ANALYSIS;
 
+  // Get prefetch count from environment or use analysis-specific default
+  // Higher prefetch allows concurrent processing while waiting for HuggingFace API (200-400ms per request)
+  const prefetchCount =
+    parseInt(process.env.ANALYSIS_PREFETCH_COUNT ?? '', 10) ||
+    RABBITMQ_CONSTANTS.ANALYSIS.DEFAULT_PREFETCH_COUNT;
+
   logger.log(`RabbitMQ: ${getSanitizedRabbitMqUrl(rabbitmqUrl)}`);
+  logger.log(
+    `Prefetch count: ${prefetchCount} (concurrent message processing)`,
+  );
 
   // Create hybrid application (HTTP + Microservice)
   const app = await NestFactory.create(AnalysisModule);
@@ -33,7 +42,7 @@ async function bootstrap() {
         durable: RABBITMQ_CONSTANTS.DEFAULTS.QUEUE_DURABLE,
       },
       noAck: RABBITMQ_CONSTANTS.DEFAULTS.NO_ACK, // false = manual ack
-      prefetchCount: RABBITMQ_CONSTANTS.DEFAULTS.PREFETCH_COUNT,
+      prefetchCount: prefetchCount,
     },
   });
 
