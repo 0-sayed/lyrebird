@@ -4,6 +4,7 @@ import { RabbitmqService } from '@app/rabbitmq';
 import {
   MESSAGE_PATTERNS,
   StartJobMessage,
+  CancelJobMessage,
   JobStatus,
 } from '@app/shared-types';
 import { CreateJobDto, JobResponseDto } from './dtos';
@@ -82,6 +83,35 @@ export class GatewayService {
     const jobs = await this.jobsRepository.findAll();
 
     return Promise.all(jobs.map((job) => this.toJobResponseDto(job)));
+  }
+
+  /**
+   * Delete a job and its associated sentiment data
+   */
+  async deleteJob(jobId: string): Promise<{ success: boolean }> {
+    const job = await this.jobsRepository.findById(jobId);
+
+    if (!job) {
+      throw new NotFoundException(`Job with ID ${jobId} not found`);
+    }
+
+    // Notify ingestion service to stop processing this job
+    const cancelMessage: CancelJobMessage = {
+      jobId,
+      timestamp: new Date(),
+    };
+    this.rabbitmqService.emit(MESSAGE_PATTERNS.JOB_CANCEL, cancelMessage);
+    this.logger.log(`Sent cancel message for job ${jobId}`);
+
+    // Delete associated sentiment data first (cascade)
+    await this.sentimentDataRepository.deleteByJobId(jobId);
+
+    // Delete the job
+    await this.jobsRepository.delete(jobId);
+
+    this.logger.log(`Deleted job ${jobId} and its associated data`);
+
+    return { success: true };
   }
 
   private async toJobResponseDto(job: Job): Promise<JobResponseDto> {
