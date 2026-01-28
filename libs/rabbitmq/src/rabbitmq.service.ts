@@ -130,12 +130,24 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
   /**
    * Emit an event (fire-and-forget)
    * Automatically routes to the correct queue based on pattern
+   *
+   * CRITICAL: NestJS ClientProxy.emit() returns a cold Observable.
+   * The message is only sent when the Observable is subscribed.
+   * We subscribe immediately to ensure real-time message delivery.
    */
   emit<T = unknown>(pattern: string, data: T): void {
     const queue = getQueueForPattern(pattern);
-    this.logger.debug(`Emitting event: ${pattern} → ${queue}`, data);
+    this.logger.debug(`Emitting event: ${pattern} → ${queue}`);
     const client = this.getClientForQueue(queue);
-    client.emit(pattern, data);
+    // MUST subscribe to the Observable for the message to be sent
+    // Without this, messages get buffered and sent in batches
+    client.emit(pattern, data).subscribe({
+      error: (err) => {
+        this.logger.error(
+          `Failed to emit ${pattern}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      },
+    });
   }
 
   /**
@@ -155,11 +167,21 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
   /**
    * Emit directly to a specific queue (bypass pattern routing)
    * Use this when you need explicit control over the target queue
+   *
+   * CRITICAL: NestJS ClientProxy.emit() returns a cold Observable.
+   * The message is only sent when the Observable is subscribed.
    */
   emitToQueue<T = unknown>(queue: string, pattern: string, data: T): void {
-    this.logger.debug(`Emitting event: ${pattern} → ${queue} (direct)`, data);
+    this.logger.debug(`Emitting event: ${pattern} → ${queue} (direct)`);
     const client = this.getClientForQueue(queue);
-    client.emit(pattern, data);
+    // MUST subscribe to the Observable for the message to be sent
+    client.emit(pattern, data).subscribe({
+      error: (err) => {
+        this.logger.error(
+          `Failed to emit ${pattern} to ${queue}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      },
+    });
   }
 
   /**
