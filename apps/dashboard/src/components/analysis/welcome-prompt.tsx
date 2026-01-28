@@ -184,18 +184,20 @@ export function WelcomePrompt({
           </div>
         </div>
 
-        {/* Character count indicator */}
-        {trimmedValue.length > 0 && (
-          <p
-            id="prompt-length-hint"
-            className={cn(
-              'mt-2 text-right text-xs',
-              isOverLimit ? 'text-destructive' : 'text-muted-foreground',
-            )}
-          >
-            {trimmedValue.length}/{MAX_PROMPT_LENGTH}
-          </p>
-        )}
+        {/* Character count indicator - always rendered to prevent layout shift */}
+        <p
+          id="prompt-length-hint"
+          className={cn(
+            'mt-2 text-right text-xs',
+            trimmedValue.length > 0
+              ? isOverLimit
+                ? 'text-destructive'
+                : 'text-muted-foreground'
+              : 'invisible',
+          )}
+        >
+          {trimmedValue.length}/{MAX_PROMPT_LENGTH}
+        </p>
 
         {/* Example prompts */}
         <div className="mt-6">
