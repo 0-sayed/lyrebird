@@ -496,7 +496,9 @@ export class AnalysisService implements OnModuleInit, OnModuleDestroy {
       }
 
       // Check if we've hit the threshold
-      const completionRatio = tracker.processed / tracker.expected;
+      // Guard against division by zero - if expected is 0, treat as 100% complete (ratio = 1)
+      const completionRatio =
+        tracker.expected > 0 ? tracker.processed / tracker.expected : 1;
       const timeSinceLastUpdate = Date.now() - tracker.lastUpdated;
 
       this.logger.log(
