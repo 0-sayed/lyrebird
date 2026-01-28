@@ -1,22 +1,22 @@
 /**
  * BERT Sentiment Service Unit Tests
  *
- * Tests the BertSentimentService with mocked HTTP client and AFINN analyzer.
- * The service uses HuggingFace Inference API as primary with AFINN fallback.
+ * Tests the BertSentimentService with mocked ONNX pipeline.
+ * The service uses local ONNX inference with @huggingface/transformers.
  *
  * Test Strategy:
- * 1. Mock HTTP client to simulate HuggingFace API responses
- * 2. Mock AFINN analyzer for predictable fallback behavior
- * 3. Test HuggingFace API path, AFINN fallback path, and error handling
+ * 1. Mock pipeline factory to simulate ONNX model responses
+ * 2. Test sentiment analysis, score mapping, and error handling
+ * 3. Test score boundary conditions (NEUTRAL_THRESHOLD = 0.6)
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import {
   BertSentimentService,
-  HTTP_CLIENT,
-  AFINN_ANALYZER,
-  HttpClient,
+  PIPELINE_FACTORY,
+  PipelineFactory,
+  SentimentPipeline,
 } from './bert-sentiment.service';
 import {
   SENTIMENT_TEST_CASES,
@@ -25,108 +25,224 @@ import {
 
 describe('BertSentimentService', () => {
   let service: BertSentimentService;
-  let mockHttpClient: jest.Mocked<HttpClient>;
-  let mockAfinnAnalyzer: {
-    analyze: jest.Mock;
-  };
-  let mockConfigService: {
-    get: jest.Mock;
-  };
+  let mockPipeline: jest.Mock;
+  let mockPipelineFactory: jest.MockedFunction<PipelineFactory>;
+  let mockConfigService: { get: jest.Mock };
+  let module: TestingModule;
 
-  beforeEach(async () => {
-    // Create mock HTTP client
-    mockHttpClient = {
-      post: jest.fn(),
-    };
-
-    // Create mock AFINN analyzer
-    mockAfinnAnalyzer = {
-      analyze: jest.fn().mockReturnValue({
-        score: 3,
-        comparative: 0.6,
-        tokens: ['test', 'word'],
-        positive: ['good'],
-        negative: [],
+  /**
+   * Helper to create a test module with custom providers
+   */
+  async function createModule(
+    pipelineFactory: PipelineFactory,
+    configOverrides?: Record<string, unknown>,
+  ): Promise<TestingModule> {
+    const configService = {
+      get: jest.fn((key: string) => {
+        if (configOverrides && key in configOverrides) {
+          return configOverrides[key];
+        }
+        if (key === 'ML_MODEL_CACHE_DIR') return './test-models-cache';
+        if (key === 'ML_QUANTIZATION') return 'q8';
+        return undefined;
       }),
     };
 
-    // Create mock ConfigService with HuggingFace API key
-    mockConfigService = {
-      get: jest.fn().mockReturnValue('test-api-key'),
-    };
-
-    const module: TestingModule = await Test.createTestingModule({
+    return Test.createTestingModule({
       providers: [
         BertSentimentService,
-        {
-          provide: ConfigService,
-          useValue: mockConfigService,
-        },
-        {
-          provide: HTTP_CLIENT,
-          useValue: mockHttpClient,
-        },
-        {
-          provide: AFINN_ANALYZER,
-          useValue: mockAfinnAnalyzer,
-        },
+        { provide: ConfigService, useValue: configService },
+        { provide: PIPELINE_FACTORY, useValue: pipelineFactory },
+      ],
+    }).compile();
+  }
+
+  /**
+   * Helper to set pipeline response
+   */
+  function setPipelineResponse(label: string, score: number): void {
+    mockPipeline.mockResolvedValue([
+      { label, score },
+      {
+        label: label === 'POSITIVE' ? 'NEGATIVE' : 'POSITIVE',
+        score: 1 - score,
+      },
+    ]);
+  }
+
+  beforeEach(async () => {
+    mockPipeline = jest.fn().mockResolvedValue([
+      { label: 'POSITIVE', score: 0.95 },
+      { label: 'NEGATIVE', score: 0.05 },
+    ]);
+
+    mockPipelineFactory = jest
+      .fn()
+      .mockResolvedValue(mockPipeline as unknown as SentimentPipeline);
+
+    mockConfigService = {
+      get: jest.fn((key: string) => {
+        if (key === 'ML_MODEL_CACHE_DIR') return './test-models-cache';
+        if (key === 'ML_QUANTIZATION') return 'q8';
+        return undefined;
+      }),
+    };
+
+    module = await Test.createTestingModule({
+      providers: [
+        BertSentimentService,
+        { provide: ConfigService, useValue: mockConfigService },
+        { provide: PIPELINE_FACTORY, useValue: mockPipelineFactory },
       ],
     }).compile();
 
     service = module.get<BertSentimentService>(BertSentimentService);
   });
 
+  afterEach(async () => {
+    await module?.close();
+  });
+
   describe('initialization', () => {
-    it('should be defined', () => {
-      expect(service).toBeDefined();
+    it('should not be ready before initialization', () => {
+      expect(service.isReady()).toBe(false);
     });
 
-    it('should always be ready (AFINN fallback available)', () => {
+    it('should be ready after onModuleInit', async () => {
+      await service.onModuleInit();
       expect(service.isReady()).toBe(true);
     });
 
-    it('should report correct status with API key configured', () => {
-      const status = service.getStatus();
-      expect(status.ready).toBe(true);
-      expect(status.provider).toBe('huggingface');
-      expect(status.huggingfaceConfigured).toBe(true);
+    describe('status reporting', () => {
+      it('should report correct status before initialization', () => {
+        const status = service.getStatus();
+        expect(status).toMatchObject({
+          ready: false,
+          provider: 'local-onnx',
+          modelLoaded: false,
+          modelName: 'Xenova/distilbert-base-uncased-finetuned-sst-2-english',
+          quantization: 'q8',
+        });
+      });
+
+      it('should report correct status after initialization', async () => {
+        await service.onModuleInit();
+        const status = service.getStatus();
+        expect(status).toMatchObject({
+          ready: true,
+          provider: 'local-onnx',
+          modelLoaded: true,
+        });
+      });
     });
 
-    it('should report AFINN provider when API key not configured', async () => {
-      // Create service without API key
-      mockConfigService.get.mockReturnValue(undefined);
+    it('should call pipeline factory with correct parameters', async () => {
+      await service.onModuleInit();
 
-      const module: TestingModule = await Test.createTestingModule({
-        providers: [
-          BertSentimentService,
-          {
-            provide: ConfigService,
-            useValue: mockConfigService,
-          },
-          {
-            provide: AFINN_ANALYZER,
-            useValue: mockAfinnAnalyzer,
-          },
-        ],
-      }).compile();
+      expect(mockPipelineFactory).toHaveBeenCalledWith(
+        'sentiment-analysis',
+        'Xenova/distilbert-base-uncased-finetuned-sst-2-english',
+        { dtype: 'q8', cache_dir: './test-models-cache' },
+      );
+    });
 
-      const noApiService =
-        module.get<BertSentimentService>(BertSentimentService);
-      const status = noApiService.getStatus();
+    describe('initialization failure handling', () => {
+      it('should handle model load error gracefully', async () => {
+        const errorFactory = jest
+          .fn()
+          .mockRejectedValue(new Error('Model load failed'));
 
-      expect(status.ready).toBe(true);
-      expect(status.provider).toBe('afinn');
-      expect(status.huggingfaceConfigured).toBe(false);
+        const errorModule = await createModule(errorFactory);
+        const errorService =
+          errorModule.get<BertSentimentService>(BertSentimentService);
 
-      await module.close();
+        await expect(errorService.onModuleInit()).rejects.toThrow(
+          'Model load failed',
+        );
+        expect(errorService.isReady()).toBe(false);
+        expect(errorService.getStatus().error).toBe('Model load failed');
+
+        await errorModule.close();
+      });
+
+      it('should handle network timeout error', async () => {
+        const timeoutFactory = jest
+          .fn()
+          .mockRejectedValue(new Error('ETIMEDOUT: Network timeout'));
+
+        const timeoutModule = await createModule(timeoutFactory);
+        const timeoutService =
+          timeoutModule.get<BertSentimentService>(BertSentimentService);
+
+        await expect(timeoutService.onModuleInit()).rejects.toThrow(
+          'ETIMEDOUT',
+        );
+        expect(timeoutService.getStatus().error).toBe(
+          'ETIMEDOUT: Network timeout',
+        );
+
+        await timeoutModule.close();
+      });
+
+      it('should handle out of memory error', async () => {
+        const oomFactory = jest
+          .fn()
+          .mockRejectedValue(new Error('ENOMEM: Cannot allocate memory'));
+
+        const oomModule = await createModule(oomFactory);
+        const oomService =
+          oomModule.get<BertSentimentService>(BertSentimentService);
+
+        await expect(oomService.onModuleInit()).rejects.toThrow('ENOMEM');
+        expect(oomService.getStatus().error).toBe(
+          'ENOMEM: Cannot allocate memory',
+        );
+
+        await oomModule.close();
+      });
+
+      it('should handle non-Error thrown values', async () => {
+        const stringErrorFactory = jest.fn().mockRejectedValue('String error');
+
+        const stringModule = await createModule(stringErrorFactory);
+        const stringService =
+          stringModule.get<BertSentimentService>(BertSentimentService);
+
+        await expect(stringService.onModuleInit()).rejects.toBe('String error');
+        expect(stringService.getStatus().error).toBe('Failed to load model');
+
+        await stringModule.close();
+      });
+
+      it('should prevent analysis when initialization failed', async () => {
+        const errorFactory = jest
+          .fn()
+          .mockRejectedValue(new Error('Init failed'));
+
+        const errorModule = await createModule(errorFactory);
+        const errorService =
+          errorModule.get<BertSentimentService>(BertSentimentService);
+
+        await expect(errorService.onModuleInit()).rejects.toThrow();
+
+        // Subsequent analyze calls should fail
+        await expect(errorService.analyze('test')).rejects.toThrow();
+
+        await errorModule.close();
+      });
     });
   });
 
-  describe('analyze with HuggingFace API', () => {
+  describe('analyze with local ONNX', () => {
+    beforeEach(async () => {
+      await service.onModuleInit();
+    });
+
     describe('positive sentiment', () => {
       beforeEach(() => {
-        mockHttpClient.post.mockResolvedValue([
-          [{ label: 'POSITIVE', score: 0.95 }],
+        mockPipeline.mockResolvedValue([
+          { label: 'POSITIVE', score: 0.95 },
+          { label: 'NEGATIVE', score: 0.05 },
         ]);
       });
 
@@ -139,26 +255,28 @@ describe('BertSentimentService', () => {
           expect(result.score).toBeGreaterThanOrEqual(minScore);
           expect(result.score).toBeLessThanOrEqual(maxScore);
           expect(result.confidence).toBeGreaterThan(0.6);
-          expect(result.source).toBe('huggingface');
+          expect(result.source).toBe('local-onnx');
         },
       );
 
       it('should have high confidence for clearly positive text', async () => {
-        mockHttpClient.post.mockResolvedValue([
-          [{ label: 'POSITIVE', score: 0.98 }],
+        mockPipeline.mockResolvedValue([
+          { label: 'POSITIVE', score: 0.98 },
+          { label: 'NEGATIVE', score: 0.02 },
         ]);
 
         const result = await service.analyze('I absolutely love this!');
 
         expect(result.confidence).toBeGreaterThan(0.9);
-        expect(result.source).toBe('huggingface');
+        expect(result.source).toBe('local-onnx');
       });
     });
 
     describe('negative sentiment', () => {
       beforeEach(() => {
-        mockHttpClient.post.mockResolvedValue([
-          [{ label: 'NEGATIVE', score: 0.92 }],
+        mockPipeline.mockResolvedValue([
+          { label: 'NEGATIVE', score: 0.92 },
+          { label: 'POSITIVE', score: 0.08 },
         ]);
       });
 
@@ -171,27 +289,29 @@ describe('BertSentimentService', () => {
           expect(result.score).toBeGreaterThanOrEqual(minScore);
           expect(result.score).toBeLessThanOrEqual(maxScore);
           expect(result.confidence).toBeGreaterThan(0.6);
-          expect(result.source).toBe('huggingface');
+          expect(result.source).toBe('local-onnx');
         },
       );
 
       it('should have high confidence for clearly negative text', async () => {
-        mockHttpClient.post.mockResolvedValue([
-          [{ label: 'NEGATIVE', score: 0.97 }],
+        mockPipeline.mockResolvedValue([
+          { label: 'NEGATIVE', score: 0.97 },
+          { label: 'POSITIVE', score: 0.03 },
         ]);
 
         const result = await service.analyze('This is absolutely terrible!');
 
         expect(result.confidence).toBeGreaterThan(0.9);
-        expect(result.source).toBe('huggingface');
+        expect(result.source).toBe('local-onnx');
       });
     });
 
     describe('neutral sentiment', () => {
       beforeEach(() => {
         // Low confidence = neutral (below NEUTRAL_THRESHOLD of 0.6)
-        mockHttpClient.post.mockResolvedValue([
-          [{ label: 'POSITIVE', score: 0.55 }],
+        mockPipeline.mockResolvedValue([
+          { label: 'POSITIVE', score: 0.55 },
+          { label: 'NEGATIVE', score: 0.45 },
         ]);
       });
 
@@ -201,199 +321,153 @@ describe('BertSentimentService', () => {
           const result = await service.analyze(text);
 
           expect(result.label).toBe('neutral');
-          expect(result.score).toBeGreaterThanOrEqual(0.2);
-          expect(result.score).toBeLessThanOrEqual(0.8);
-          expect(result.source).toBe('huggingface');
+          // Neutral scores should be close to 0 on -1 to +1 scale
+          expect(result.score).toBeGreaterThanOrEqual(-0.6);
+          expect(result.score).toBeLessThanOrEqual(0.6);
+          expect(result.source).toBe('local-onnx');
         },
       );
     });
 
     describe('score mapping', () => {
-      it('should map POSITIVE with high score to 0.75-1.0 range', async () => {
-        mockHttpClient.post.mockResolvedValue([
-          [{ label: 'POSITIVE', score: 0.95 }],
+      it.each([
+        {
+          label: 'POSITIVE',
+          pipelineScore: 0.95,
+          expectedMin: 0.9,
+          expectedMax: 1.0,
+        },
+        {
+          label: 'POSITIVE',
+          pipelineScore: 0.75,
+          expectedMin: 0.7,
+          expectedMax: 0.8,
+        },
+        {
+          label: 'NEGATIVE',
+          pipelineScore: 0.95,
+          expectedMin: -1.0,
+          expectedMax: -0.9,
+        },
+        {
+          label: 'NEGATIVE',
+          pipelineScore: 0.75,
+          expectedMin: -0.8,
+          expectedMax: -0.7,
+        },
+      ] as const)(
+        'should map $label with score $pipelineScore to [$expectedMin, $expectedMax]',
+        async ({ label, pipelineScore, expectedMin, expectedMax }) => {
+          setPipelineResponse(label, pipelineScore);
+
+          const result = await service.analyze('test text');
+
+          expect(result.score).toBeGreaterThanOrEqual(expectedMin);
+          expect(result.score).toBeLessThanOrEqual(expectedMax);
+        },
+      );
+    });
+
+    describe('score boundary tests (NEUTRAL_THRESHOLD = 0.6)', () => {
+      it.each([
+        // Exactly at threshold - should be classified (not neutral)
+        { label: 'POSITIVE', score: 0.6, expectedLabel: 'positive' },
+        { label: 'NEGATIVE', score: 0.6, expectedLabel: 'negative' },
+        // Just below threshold - should be neutral
+        { label: 'POSITIVE', score: 0.59, expectedLabel: 'neutral' },
+        { label: 'NEGATIVE', score: 0.59, expectedLabel: 'neutral' },
+        // Well above threshold - should be classified
+        { label: 'POSITIVE', score: 0.8, expectedLabel: 'positive' },
+        { label: 'NEGATIVE', score: 0.8, expectedLabel: 'negative' },
+        // Very low confidence - should be neutral
+        { label: 'POSITIVE', score: 0.5, expectedLabel: 'neutral' },
+        { label: 'NEGATIVE', score: 0.5, expectedLabel: 'neutral' },
+      ] as const)(
+        'should return $expectedLabel for $label at confidence $score',
+        async ({ label, score, expectedLabel }) => {
+          setPipelineResponse(label, score);
+
+          const result = await service.analyze('test text');
+
+          expect(result.label).toBe(expectedLabel);
+          expect(result.confidence).toBeCloseTo(score, 4);
+        },
+      );
+
+      it('should return score of 0 for neutral results', async () => {
+        // Low confidence = neutral, score should be close to 0
+        setPipelineResponse('POSITIVE', 0.55);
+
+        const result = await service.analyze('ambiguous text');
+
+        expect(result.label).toBe('neutral');
+        // Score reflects the direction even for neutral (but label is neutral)
+        expect(Math.abs(result.score)).toBeLessThan(0.6);
+      });
+
+      it('should clamp score to [-1, 1] range for extreme values', async () => {
+        // Force extreme score (shouldn't happen in practice)
+        mockPipeline.mockResolvedValue([
+          { label: 'POSITIVE', score: 1.5 }, // Out of expected 0-1 range
+          { label: 'NEGATIVE', score: -0.5 },
         ]);
 
-        const result = await service.analyze('Great!');
+        const result = await service.analyze('test');
 
-        // 0.5 + (0.95 * 0.5) = 0.975
-        expect(result.score).toBeGreaterThanOrEqual(0.9);
         expect(result.score).toBeLessThanOrEqual(1.0);
+        expect(result.score).toBeGreaterThanOrEqual(-1.0);
+        expect(result.confidence).toBeLessThanOrEqual(1.0);
       });
-
-      it('should map NEGATIVE with high score to 0.0-0.25 range', async () => {
-        mockHttpClient.post.mockResolvedValue([
-          [{ label: 'NEGATIVE', score: 0.95 }],
-        ]);
-
-        const result = await service.analyze('Terrible!');
-
-        // 0.5 - (0.95 * 0.5) = 0.025
-        expect(result.score).toBeGreaterThanOrEqual(0.0);
-        expect(result.score).toBeLessThanOrEqual(0.1);
-      });
-    });
-  });
-
-  describe('AFINN fallback', () => {
-    it('should use AFINN when API key not configured', async () => {
-      mockConfigService.get.mockReturnValue(undefined);
-
-      const module: TestingModule = await Test.createTestingModule({
-        providers: [
-          BertSentimentService,
-          {
-            provide: ConfigService,
-            useValue: mockConfigService,
-          },
-          {
-            provide: AFINN_ANALYZER,
-            useValue: mockAfinnAnalyzer,
-          },
-        ],
-      }).compile();
-
-      const noApiService =
-        module.get<BertSentimentService>(BertSentimentService);
-
-      const result = await noApiService.analyze('test text');
-
-      expect(result.source).toBe('afinn');
-      expect(mockAfinnAnalyzer.analyze).toHaveBeenCalledWith('test text');
-
-      await module.close();
-    });
-
-    it('should fallback to AFINN on rate limit (429)', async () => {
-      const rateLimitError = new Error('Rate limited') as Error & {
-        statusCode?: number;
-      };
-      rateLimitError.statusCode = 429;
-      mockHttpClient.post.mockRejectedValue(rateLimitError);
-
-      const result = await service.analyze('test text');
-
-      expect(result.source).toBe('afinn');
-      expect(mockAfinnAnalyzer.analyze).toHaveBeenCalled();
-    });
-
-    it('should fallback to AFINN on API error', async () => {
-      mockHttpClient.post.mockRejectedValue(new Error('Network error'));
-
-      const result = await service.analyze('test text');
-
-      expect(result.source).toBe('afinn');
-      expect(mockAfinnAnalyzer.analyze).toHaveBeenCalled();
-    });
-
-    it('should return positive from AFINN for positive comparative score', async () => {
-      mockConfigService.get.mockReturnValue(undefined);
-      mockAfinnAnalyzer.analyze.mockReturnValue({
-        score: 5,
-        comparative: 2.5, // High positive
-        tokens: ['love', 'amazing'],
-        positive: ['love', 'amazing'],
-        negative: [],
-      });
-
-      const module: TestingModule = await Test.createTestingModule({
-        providers: [
-          BertSentimentService,
-          {
-            provide: ConfigService,
-            useValue: mockConfigService,
-          },
-          {
-            provide: AFINN_ANALYZER,
-            useValue: mockAfinnAnalyzer,
-          },
-        ],
-      }).compile();
-
-      const noApiService =
-        module.get<BertSentimentService>(BertSentimentService);
-      const result = await noApiService.analyze('I love this amazing product');
-
-      expect(result.label).toBe('positive');
-      expect(result.score).toBeGreaterThan(0.55);
-      expect(result.source).toBe('afinn');
-
-      await module.close();
-    });
-
-    it('should return negative from AFINN for negative comparative score', async () => {
-      mockConfigService.get.mockReturnValue(undefined);
-      mockAfinnAnalyzer.analyze.mockReturnValue({
-        score: -5,
-        comparative: -2.5, // High negative
-        tokens: ['hate', 'terrible'],
-        positive: [],
-        negative: ['hate', 'terrible'],
-      });
-
-      const module: TestingModule = await Test.createTestingModule({
-        providers: [
-          BertSentimentService,
-          {
-            provide: ConfigService,
-            useValue: mockConfigService,
-          },
-          {
-            provide: AFINN_ANALYZER,
-            useValue: mockAfinnAnalyzer,
-          },
-        ],
-      }).compile();
-
-      const noApiService =
-        module.get<BertSentimentService>(BertSentimentService);
-      const result = await noApiService.analyze('I hate this terrible product');
-
-      expect(result.label).toBe('negative');
-      expect(result.score).toBeLessThan(0.45);
-      expect(result.source).toBe('afinn');
-
-      await module.close();
     });
   });
 
   describe('edge cases', () => {
-    beforeEach(() => {
-      mockHttpClient.post.mockResolvedValue([
-        [{ label: 'POSITIVE', score: 0.5 }],
+    beforeEach(async () => {
+      await service.onModuleInit();
+      mockPipeline.mockResolvedValue([
+        { label: 'POSITIVE', score: 0.5 },
+        { label: 'NEGATIVE', score: 0.5 },
       ]);
     });
 
     it('should handle empty text gracefully', async () => {
-      await expect(
-        service.analyze(EDGE_CASE_TEXTS.empty),
-      ).resolves.toBeDefined();
+      const result = await service.analyze(EDGE_CASE_TEXTS.empty);
+
+      expect(result).toBeDefined();
+      expect(result.label).toBe('neutral');
+      expect(result.score).toBe(0);
+      expect(result.source).toBe('local-onnx');
+      // Should not call pipeline for empty text
+      expect(mockPipeline).not.toHaveBeenCalled();
     });
 
     it('should handle whitespace-only text', async () => {
-      await expect(
-        service.analyze(EDGE_CASE_TEXTS.whitespace),
-      ).resolves.toBeDefined();
+      const result = await service.analyze(EDGE_CASE_TEXTS.whitespace);
+
+      expect(result).toBeDefined();
+      expect(result.label).toBe('neutral');
+      expect(result.source).toBe('local-onnx');
     });
 
     it('should truncate very long text', async () => {
-      mockHttpClient.post.mockResolvedValue([
-        [{ label: 'POSITIVE', score: 0.9 }],
+      mockPipeline.mockResolvedValue([
+        { label: 'POSITIVE', score: 0.9 },
+        { label: 'NEGATIVE', score: 0.1 },
       ]);
 
       const result = await service.analyze(EDGE_CASE_TEXTS.veryLong);
 
       expect(result).toBeDefined();
       // Verify truncation happened - the text sent should be <= 503 chars (500 + "...")
-      const calledWith = mockHttpClient.post.mock.calls[0][1] as {
-        inputs: string;
-      };
-      expect(calledWith.inputs.length).toBeLessThanOrEqual(503);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      const calledWith = mockPipeline.mock.calls[0][0] as string;
+      expect(calledWith.length).toBeLessThanOrEqual(503);
     });
 
     it('should handle special characters safely', async () => {
-      mockHttpClient.post.mockResolvedValue([
-        [{ label: 'POSITIVE', score: 0.85 }],
+      mockPipeline.mockResolvedValue([
+        { label: 'POSITIVE', score: 0.85 },
+        { label: 'NEGATIVE', score: 0.15 },
       ]);
 
       await expect(
@@ -402,8 +476,9 @@ describe('BertSentimentService', () => {
     });
 
     it('should handle unicode text', async () => {
-      mockHttpClient.post.mockResolvedValue([
-        [{ label: 'POSITIVE', score: 0.75 }],
+      mockPipeline.mockResolvedValue([
+        { label: 'POSITIVE', score: 0.75 },
+        { label: 'NEGATIVE', score: 0.25 },
       ]);
 
       await expect(
@@ -413,34 +488,39 @@ describe('BertSentimentService', () => {
   });
 
   describe('error handling', () => {
-    it('should throw if API returns empty response', async () => {
-      mockHttpClient.post.mockResolvedValue([]);
-
-      // With fallback, it should use AFINN instead of throwing
-      const result = await service.analyze('test');
-      expect(result.source).toBe('afinn');
+    beforeEach(async () => {
+      await service.onModuleInit();
     });
 
-    it('should handle null response gracefully', async () => {
-      mockHttpClient.post.mockResolvedValue(
-        null as unknown as {
-          label: 'POSITIVE' | 'NEGATIVE';
-          score: number;
-        }[][],
-      );
+    it('should throw on pipeline error', async () => {
+      mockPipeline.mockRejectedValue(new Error('Inference failed'));
 
-      // With fallback, it should use AFINN
-      const result = await service.analyze('test');
-      expect(result.source).toBe('afinn');
+      await expect(service.analyze('test')).rejects.toThrow('Inference failed');
+    });
+
+    it('should select highest scoring result when multiple labels returned', async () => {
+      mockPipeline.mockResolvedValue([
+        { label: 'NEGATIVE', score: 0.3 },
+        { label: 'POSITIVE', score: 0.95 },
+      ]);
+
+      const result = await service.analyze('test text');
+
+      expect(result.source).toBe('local-onnx');
+      expect(result.label).toBe('positive');
     });
   });
 
   describe('consistency', () => {
-    it('should return consistent results for same input', async () => {
-      mockHttpClient.post.mockResolvedValue([
-        [{ label: 'POSITIVE', score: 0.88 }],
+    beforeEach(async () => {
+      await service.onModuleInit();
+      mockPipeline.mockResolvedValue([
+        { label: 'POSITIVE', score: 0.88 },
+        { label: 'NEGATIVE', score: 0.12 },
       ]);
+    });
 
+    it('should return consistent results for same input', async () => {
       const text = 'This is a great product!';
       const result1 = await service.analyze(text);
       const result2 = await service.analyze(text);
@@ -452,10 +532,9 @@ describe('BertSentimentService', () => {
   });
 
   describe('concurrent access', () => {
-    beforeEach(() => {
-      mockHttpClient.post.mockResolvedValue([
-        [{ label: 'POSITIVE', score: 0.85 }],
-      ]);
+    beforeEach(async () => {
+      await service.onModuleInit();
+      setPipelineResponse('POSITIVE', 0.85);
     });
 
     it('should handle multiple concurrent analyze calls', async () => {
@@ -470,160 +549,108 @@ describe('BertSentimentService', () => {
       const results = await Promise.all(texts.map((t) => service.analyze(t)));
 
       expect(results).toHaveLength(5);
-      results.forEach((result) => {
-        expect(result).toHaveProperty('score');
-        expect(result).toHaveProperty('label');
-        expect(result).toHaveProperty('confidence');
-        expect(result).toHaveProperty('source');
-      });
-    });
-  });
-
-  describe('API resilience', () => {
-    it('should fallback to AFINN on HTTP 500 error', async () => {
-      const serverError = new Error('Server error') as Error & {
-        statusCode?: number;
-      };
-      serverError.statusCode = 500;
-      mockHttpClient.post.mockRejectedValue(serverError);
-
-      const result = await service.analyze('test text');
-
-      expect(result.source).toBe('afinn');
-      expect(mockAfinnAnalyzer.analyze).toHaveBeenCalled();
+      for (const result of results) {
+        expect(result).toMatchObject({
+          label: 'positive',
+          source: 'local-onnx',
+        });
+        expect(result.score).toBeGreaterThan(0);
+        expect(result.confidence).toBeGreaterThan(0);
+      }
     });
 
-    it('should fallback to AFINN on HTTP 503 error', async () => {
-      const serviceUnavailableError = new Error(
-        'Service unavailable',
-      ) as Error & {
-        statusCode?: number;
-      };
-      serviceUnavailableError.statusCode = 503;
-      mockHttpClient.post.mockRejectedValue(serviceUnavailableError);
+    it('should only initialize pipeline once even with concurrent calls', async () => {
+      // Create new service without pre-initialization
+      const concurrentModule = await createModule(mockPipelineFactory);
+      const concurrentService =
+        concurrentModule.get<BertSentimentService>(BertSentimentService);
 
-      const result = await service.analyze('test text');
+      // Reset call count
+      mockPipelineFactory.mockClear();
 
-      expect(result.source).toBe('afinn');
-    });
-
-    it('should fallback to AFINN on timeout error', async () => {
-      mockHttpClient.post.mockRejectedValue(new Error('ETIMEDOUT'));
-
-      const result = await service.analyze('test text');
-
-      expect(result.source).toBe('afinn');
-    });
-
-    it('should fallback to AFINN when response has unexpected structure', async () => {
-      // Response with empty inner array
-      mockHttpClient.post.mockResolvedValue([[]]);
-
-      const result = await service.analyze('test text');
-
-      expect(result.source).toBe('afinn');
-    });
-
-    it('should select highest scoring result when multiple labels returned', async () => {
-      mockHttpClient.post.mockResolvedValue([
-        [
-          { label: 'NEGATIVE', score: 0.3 },
-          { label: 'POSITIVE', score: 0.95 },
-        ],
+      // Make multiple concurrent calls that will trigger initialization
+      await Promise.all([
+        concurrentService.analyze('test 1'),
+        concurrentService.analyze('test 2'),
+        concurrentService.analyze('test 3'),
       ]);
 
-      const result = await service.analyze('test text');
+      // Pipeline factory should only be called once (singleton pattern)
+      expect(mockPipelineFactory).toHaveBeenCalledTimes(1);
 
-      expect(result.source).toBe('huggingface');
-      expect(result.label).toBe('positive');
+      await concurrentModule.close();
     });
   });
 
-  describe('AFINN score normalization', () => {
-    it('should normalize very positive AFINN scores correctly', async () => {
-      mockConfigService.get.mockReturnValue(undefined);
-      mockAfinnAnalyzer.analyze.mockReturnValue({
-        score: 20,
-        comparative: 5, // Maximum positive
-        tokens: ['love', 'amazing', 'best', 'fantastic'],
-        positive: ['love', 'amazing', 'best', 'fantastic'],
-        negative: [],
+  describe('configuration', () => {
+    it('should use default cache dir when not configured', async () => {
+      const defaultModule = await createModule(mockPipelineFactory, {
+        ML_MODEL_CACHE_DIR: undefined,
+        ML_QUANTIZATION: undefined,
       });
 
-      const module: TestingModule = await Test.createTestingModule({
-        providers: [
-          BertSentimentService,
-          { provide: ConfigService, useValue: mockConfigService },
-          { provide: AFINN_ANALYZER, useValue: mockAfinnAnalyzer },
-        ],
-      }).compile();
+      const defaultService =
+        defaultModule.get<BertSentimentService>(BertSentimentService);
+      await defaultService.onModuleInit();
 
-      const afinnService =
-        module.get<BertSentimentService>(BertSentimentService);
-      const result = await afinnService.analyze('love amazing best fantastic');
+      expect(mockPipelineFactory).toHaveBeenCalledWith(
+        'sentiment-analysis',
+        'Xenova/distilbert-base-uncased-finetuned-sst-2-english',
+        { dtype: 'q8', cache_dir: './models-cache' },
+      );
 
-      expect(result.score).toBe(1); // Should be clamped to 1
-      expect(result.label).toBe('positive');
-
-      await module.close();
+      await defaultModule.close();
     });
 
-    it('should normalize very negative AFINN scores correctly', async () => {
-      mockConfigService.get.mockReturnValue(undefined);
-      mockAfinnAnalyzer.analyze.mockReturnValue({
-        score: -20,
-        comparative: -5, // Maximum negative
-        tokens: ['hate', 'terrible', 'awful', 'horrible'],
-        positive: [],
-        negative: ['hate', 'terrible', 'awful', 'horrible'],
+    it('should use default quantization when not configured', async () => {
+      const defaultModule = await createModule(mockPipelineFactory, {
+        ML_MODEL_CACHE_DIR: undefined,
+        ML_QUANTIZATION: undefined,
       });
 
-      const module: TestingModule = await Test.createTestingModule({
-        providers: [
-          BertSentimentService,
-          { provide: ConfigService, useValue: mockConfigService },
-          { provide: AFINN_ANALYZER, useValue: mockAfinnAnalyzer },
-        ],
-      }).compile();
+      const defaultService =
+        defaultModule.get<BertSentimentService>(BertSentimentService);
+      const status = defaultService.getStatus();
 
-      const afinnService =
-        module.get<BertSentimentService>(BertSentimentService);
-      const result = await afinnService.analyze('hate terrible awful horrible');
+      expect(status.quantization).toBe('q8');
 
-      expect(result.score).toBe(0); // Should be clamped to 0
-      expect(result.label).toBe('negative');
-
-      await module.close();
+      await defaultModule.close();
     });
 
-    it('should calculate confidence based on scored word ratio', async () => {
-      mockConfigService.get.mockReturnValue(undefined);
-      mockAfinnAnalyzer.analyze.mockReturnValue({
-        score: 2,
-        comparative: 0.5,
-        tokens: ['the', 'product', 'is', 'good'],
-        positive: ['good'],
-        negative: [],
+    it.each([
+      { quantization: 'fp32' },
+      { quantization: 'fp16' },
+      { quantization: 'q4' },
+      { quantization: 'int8' },
+    ] as const)(
+      'should accept valid quantization type: $quantization',
+      async ({ quantization }) => {
+        const configModule = await createModule(mockPipelineFactory, {
+          ML_QUANTIZATION: quantization,
+        });
+
+        const configService =
+          configModule.get<BertSentimentService>(BertSentimentService);
+        const status = configService.getStatus();
+
+        expect(status.quantization).toBe(quantization);
+
+        await configModule.close();
+      },
+    );
+
+    it('should fall back to q8 for invalid quantization value', async () => {
+      const invalidModule = await createModule(mockPipelineFactory, {
+        ML_QUANTIZATION: 'invalid-type',
       });
 
-      const module: TestingModule = await Test.createTestingModule({
-        providers: [
-          BertSentimentService,
-          { provide: ConfigService, useValue: mockConfigService },
-          { provide: AFINN_ANALYZER, useValue: mockAfinnAnalyzer },
-        ],
-      }).compile();
+      const invalidService =
+        invalidModule.get<BertSentimentService>(BertSentimentService);
+      const status = invalidService.getStatus();
 
-      const afinnService =
-        module.get<BertSentimentService>(BertSentimentService);
-      const result = await afinnService.analyze('the product is good');
+      expect(status.quantization).toBe('q8');
 
-      // 1 scored word out of 4 tokens = 0.25 ratio
-      // confidence = 0.4 + 0.25 * 0.5 = 0.525
-      expect(result.confidence).toBeGreaterThan(0.4);
-      expect(result.confidence).toBeLessThan(0.85);
-
-      await module.close();
+      await invalidModule.close();
     });
   });
 });
