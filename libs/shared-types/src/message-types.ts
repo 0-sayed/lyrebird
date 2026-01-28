@@ -25,12 +25,15 @@ export enum SentimentLabel {
 }
 
 /**
- * Polling options for near-real-time data ingestion
+ * Job options for Jetstream-based data ingestion
+ *
+ * The system uses real-time Jetstream streaming:
+ * - Single WebSocket connection for all jobs
+ * - Keyword-based filtering of incoming posts
+ * - Sub-second latency
  */
-export interface PollingOptions {
-  /** How often to poll for new posts (ms) - default: 5000 (5s) */
-  pollIntervalMs?: number;
-  /** Total job duration (ms) - default: 600000 (10min) */
+export interface JobOptions {
+  /** Total job duration (ms) - default: 120000 (2min) */
   maxDurationMs?: number;
 }
 
@@ -38,12 +41,19 @@ export interface StartJobMessage {
   jobId: string;
   prompt: string;
   timestamp: Date;
-  /** Optional polling configuration for near-real-time updates */
+  /** Optional job configuration */
   options?: {
-    polling?: PollingOptions;
-    /** Maximum posts to fetch in one-shot mode */
-    maxPosts?: number;
+    job?: JobOptions;
   };
+}
+
+/**
+ * Message sent when a job is cancelled/deleted
+ * Gateway → Ingestion
+ */
+export interface CancelJobMessage {
+  jobId: string;
+  timestamp: Date;
 }
 
 export interface RawDataMessage {
@@ -58,9 +68,22 @@ export interface RawDataMessage {
   collectedAt: Date;
 }
 
+/**
+ * Message sent when streaming begins and job transitions to IN_PROGRESS state.
+ */
+export interface InitialBatchCompleteMessage {
+  jobId: string;
+  /** Number of items fetched in the initial batch */
+  initialBatchCount: number;
+  /** Timestamp when initial batch completed */
+  completedAt: Date;
+  /** Whether real-time streaming is now active */
+  streamingActive: boolean;
+}
+
 export interface IngestionCompleteMessage {
   jobId: string;
-  /** Total number of items sent to analysis queue */
+  /** Total number of items sent to analysis queue (initial + continuous) */
   totalItems: number;
   /** Timestamp when ingestion completed */
   completedAt: Date;
@@ -91,4 +114,27 @@ export interface HealthCheckResponse {
   status: 'healthy' | 'unhealthy';
   uptime: number;
   timestamp: Date;
+}
+
+/**
+ * Real-time data update message
+ * Sent from Analysis → Gateway after each sentiment data point is processed
+ */
+export interface DataUpdateMessage {
+  jobId: string;
+  /** The newly processed sentiment data point */
+  dataPoint: {
+    id: string;
+    textContent: string;
+    source: string;
+    sourceUrl?: string;
+    authorName?: string;
+    sentimentScore: number;
+    sentimentLabel: SentimentLabel;
+    publishedAt: Date;
+  };
+  /** Total number of items processed so far */
+  totalProcessed: number;
+  /** Timestamp when this data point was analyzed */
+  analyzedAt: Date;
 }
