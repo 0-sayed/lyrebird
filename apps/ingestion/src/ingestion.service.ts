@@ -1,137 +1,206 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RabbitmqService } from '@app/rabbitmq';
+import { JobsRepository } from '@app/database/repositories/jobs.repository';
 import {
   MESSAGE_PATTERNS,
   StartJobMessage,
+  InitialBatchCompleteMessage,
   IngestionCompleteMessage,
+  JobStatus,
+  JobFailedMessage,
 } from '@app/shared-types';
-import { PollingScraperService } from './scrapers/polling-scraper.service';
+import { JetstreamManagerService } from './jetstream/jetstream-manager.service';
 
+/**
+ * IngestionService handles fetching data from Bluesky via Jetstream.
+ *
+ * Architecture (Jan 2026 - Jetstream Only):
+ * - Real-time streaming via Bluesky Jetstream WebSocket API
+ * - Sub-second latency (no indexing delay)
+ * - Single WebSocket connection shared across all jobs
+ * - Keyword-based filtering of incoming posts
+ *
+ * Output: RawDataMessage via RabbitMQ
+ */
 @Injectable()
-export class IngestionService {
+export class IngestionService implements OnModuleInit {
   private readonly logger = new Logger(IngestionService.name);
 
-  private readonly defaultPollIntervalMs: number;
+  /** Default max duration - how long the job runs */
   private readonly defaultMaxDurationMs: number;
 
   constructor(
     private rabbitmqService: RabbitmqService,
-    private pollingScraperService: PollingScraperService,
+    private jetstreamManager: JetstreamManagerService,
     private configService: ConfigService,
+    private jobsRepository: JobsRepository,
   ) {
-    this.defaultPollIntervalMs = this.configService.get<number>(
-      'BLUESKY_POLL_INTERVAL_MS',
-      5000,
-    );
     this.defaultMaxDurationMs = this.configService.get<number>(
-      'BLUESKY_MAX_DURATION_MS',
-      600000, // 10 minutes default
+      'JETSTREAM_MAX_DURATION_MS',
+      120000, // Default: 2 minutes
     );
   }
 
   /**
-   * Process incoming job with real Bluesky data using polling mode
-   *
-   * Uses the PollingScraperService which does both:
-   * 1. Initial one-shot fetch (last hour of posts)
-   * 2. Continuous polling (every 5s) for new posts
-   *
-   * This implements the industry-standard "near-real-time" pattern used by
-   * Brandwatch, Meltwater, and Sprout Social.
+   * Log ingestion mode on startup
+   */
+  onModuleInit(): void {
+    this.logger.log('Ingestion mode: JETSTREAM (real-time streaming)');
+  }
+
+  /**
+   * Process incoming job using Jetstream real-time streaming
    */
   async processJob(
     message: StartJobMessage,
     correlationId: string,
   ): Promise<void> {
-    const startTime = Date.now();
-    let itemCount = 0;
-
-    try {
-      this.logger.log(`[${correlationId}] Processing job: ${message.jobId}`);
-      this.logger.log(`[${correlationId}] Search prompt: "${message.prompt}"`);
-
-      // Determine polling configuration from message options or defaults
-      const pollIntervalMs =
-        message.options?.polling?.pollIntervalMs ?? this.defaultPollIntervalMs;
-      const maxDurationMs =
-        message.options?.polling?.maxDurationMs ?? this.defaultMaxDurationMs;
-
-      this.logger.log(
-        `[${correlationId}] Starting polling: interval ${pollIntervalMs}ms, duration ${maxDurationMs}ms`,
+    // Check if job still exists in database before processing
+    const job = await this.jobsRepository.findById(message.jobId);
+    if (!job) {
+      this.logger.warn(
+        `[${correlationId}] Job ${message.jobId} not found in database, skipping processing (job may have been deleted)`,
       );
-
-      // Use Promise wrapper to handle completion
-      await new Promise<void>((resolve, reject) => {
-        this.pollingScraperService
-          .startPollingJob({
-            jobId: message.jobId,
-            prompt: message.prompt,
-            correlationId,
-            pollIntervalMs,
-            maxDurationMs,
-            onData: (rawData) => {
-              this.rabbitmqService.emit(MESSAGE_PATTERNS.JOB_RAW_DATA, rawData);
-              this.logger.debug(
-                `[${correlationId}] Published raw data: ${rawData.textContent.substring(0, 50)}...`,
-              );
-              itemCount++;
-              return Promise.resolve();
-            },
-            onComplete: () => {
-              const duration = Date.now() - startTime;
-              this.logger.log(
-                `[${correlationId}] Ingestion completed in ${duration}ms, published ${itemCount} items`,
-              );
-
-              // Signal Analysis service that all data has been sent
-              const ingestionComplete: IngestionCompleteMessage = {
-                jobId: message.jobId,
-                totalItems: itemCount,
-                completedAt: new Date(),
-              };
-              this.rabbitmqService.emit(
-                MESSAGE_PATTERNS.JOB_INGESTION_COMPLETE,
-                ingestionComplete,
-              );
-              this.logger.log(
-                `[${correlationId}] Published JOB_INGESTION_COMPLETE: ${itemCount} items`,
-              );
-
-              resolve();
-            },
-          })
-          .catch(reject);
-      });
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      this.logger.error(
-        `[${correlationId}] Job failed after ${duration}ms`,
-        error instanceof Error ? error.stack : String(error),
-      );
-      throw error;
+      return;
     }
+
+    // Start job processing in background (non-blocking)
+    // This allows the message handler to complete immediately,
+    // freeing the consumer to process other messages (like job.cancel)
+    this.processJobWithJetstream(message, correlationId);
   }
 
   /**
-   * Stop an active polling job
+   * Process job using Jetstream real-time streaming
    */
-  async stopJob(jobId: string): Promise<void> {
-    await this.pollingScraperService.stopPollingJob(jobId);
-    this.logger.log(`Stopped job: ${jobId}`);
+  private processJobWithJetstream(
+    message: StartJobMessage,
+    correlationId: string,
+  ): void {
+    const startTime = Date.now();
+
+    this.logger.log(
+      `[${correlationId}] Processing job with Jetstream: ${message.jobId}`,
+    );
+    this.logger.log(`[${correlationId}] Search prompt: "${message.prompt}"`);
+
+    const maxDurationMs =
+      message.options?.job?.maxDurationMs ?? this.defaultMaxDurationMs;
+
+    this.logger.log(
+      `[${correlationId}] Jetstream mode: duration=${maxDurationMs}ms (${maxDurationMs / 1000}s)`,
+    );
+
+    // Signal Gateway to transition job to IN_PROGRESS immediately
+    const initialBatchMsg: InitialBatchCompleteMessage = {
+      jobId: message.jobId,
+      initialBatchCount: 0,
+      completedAt: new Date(),
+      streamingActive: true, // Jetstream is now streaming
+    };
+    try {
+      this.rabbitmqService.emit(
+        MESSAGE_PATTERNS.JOB_INITIAL_BATCH_COMPLETE,
+        initialBatchMsg,
+      );
+      this.logger.log(
+        `[${correlationId}] Published JOB_INITIAL_BATCH_COMPLETE (Jetstream mode)`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `[${correlationId}] Failed to emit JOB_INITIAL_BATCH_COMPLETE`,
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
+
+    // Register job with Jetstream manager - NON-BLOCKING
+    // The job runs in the background, allowing the message handler to complete
+    // and process other messages (like job.cancel) while the job is running.
+    this.jetstreamManager
+      .registerJob({
+        jobId: message.jobId,
+        prompt: message.prompt,
+        correlationId,
+        maxDurationMs,
+        onData: (rawData) => {
+          try {
+            this.rabbitmqService.emit(MESSAGE_PATTERNS.JOB_RAW_DATA, rawData);
+            this.logger.debug(
+              `[${correlationId}] Jetstream raw data: ${rawData.textContent.substring(0, 50)}...`,
+            );
+          } catch (error) {
+            this.logger.error(
+              `[${correlationId}] Failed to emit raw data`,
+              error instanceof Error ? error.stack : String(error),
+            );
+          }
+          return Promise.resolve();
+        },
+        onComplete: (totalCount) => {
+          const duration = Date.now() - startTime;
+          this.logger.log(
+            `[${correlationId}] Jetstream ingestion completed in ${duration}ms: ${totalCount} posts matched`,
+          );
+
+          // Signal Analysis service that all data has been sent
+          const ingestionComplete: IngestionCompleteMessage = {
+            jobId: message.jobId,
+            totalItems: totalCount,
+            completedAt: new Date(),
+          };
+          try {
+            this.rabbitmqService.emit(
+              MESSAGE_PATTERNS.JOB_INGESTION_COMPLETE,
+              ingestionComplete,
+            );
+            this.logger.log(
+              `[${correlationId}] Published JOB_INGESTION_COMPLETE: ${totalCount} items`,
+            );
+          } catch (error) {
+            this.logger.error(
+              `[${correlationId}] Failed to emit JOB_INGESTION_COMPLETE`,
+              error instanceof Error ? error.stack : String(error),
+            );
+          }
+        },
+      })
+      .catch((error) => {
+        this.logger.error(
+          `[${correlationId}] Failed to register job with Jetstream`,
+          error instanceof Error ? error.stack : String(error),
+        );
+        this.rabbitmqService.emit(MESSAGE_PATTERNS.JOB_FAILED, {
+          jobId: message.jobId,
+          status: JobStatus.FAILED,
+          errorMessage:
+            error instanceof Error ? error.message : 'Job registration failed',
+          failedAt: new Date(),
+        } satisfies JobFailedMessage);
+      });
   }
 
   /**
    * Check if a job is currently running
    */
   isJobActive(jobId: string): boolean {
-    return this.pollingScraperService.isJobActive(jobId);
+    return this.jetstreamManager.isJobRegistered(jobId);
   }
 
   /**
    * Get count of active jobs
    */
   getActiveJobCount(): number {
-    return this.pollingScraperService.getActiveJobCount();
+    return this.jetstreamManager.getStatus().activeJobCount;
+  }
+
+  /**
+   * Cancel a running job
+   * Called when a job is deleted via the Gateway API
+   */
+  cancelJob(jobId: string, correlationId?: string): void {
+    const corrId = correlationId ?? `cancel-${jobId}-${Date.now()}`;
+    this.logger.log(`[${corrId}] Cancelling job: ${jobId}`);
+    this.jetstreamManager.cancelJob(jobId);
   }
 }
