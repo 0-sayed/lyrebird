@@ -65,6 +65,7 @@
   },
   "dependencies": {
     "@atproto/api": "^0.18.10",
+    "@huggingface/transformers": "^3.5.1",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.1",
@@ -82,8 +83,8 @@
     "pg": "^8.16.3",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "sentiment": "^5.0.2",
-    "swagger-ui-express": "^5.0.1"
+    "swagger-ui-express": "^5.0.1",
+    "ws": "^8.19.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
@@ -96,8 +97,8 @@
     "@types/jest": "^30.0.0",
     "@types/node": "^22.10.7",
     "@types/pg": "^8.16.0",
-    "@types/sentiment": "^5.0.4",
     "@types/supertest": "^6.0.2",
+    "@types/ws": "^8.18.1",
     "concurrently": "^9.2.1",
     "drizzle-kit": "^0.31.8",
     "eslint": "^9.18.0",
@@ -143,18 +144,28 @@
       "apps/**/*.ts",
       "libs/**/*.ts",
       "!apps/dashboard/**",
+      "!apps/dashboard/**",
       "!**/*.module.ts",
       "!**/main.ts",
       "!**/*.d.ts",
-      "!**/index.ts"
+      "!**/index.ts",
+      "!**/test/**",
+      "!**/*.spec.ts",
+      "!**/*.e2e-spec.ts",
+      "!**/*.integration.spec.ts",
+      "!**/health/**",
+      "!**/filters/**",
+      "!**/interceptors/**",
+      "!apps/gateway/src/controllers/job-events.controller.ts",
+      "!apps/gateway/src/services/job-events.service.ts"
     ],
     "coverageDirectory": "./coverage",
     "coverageThreshold": {
       "global": {
-        "branches": 33,
-        "functions": 31,
-        "lines": 33,
-        "statements": 34
+        "branches": 70,
+        "functions": 85,
+        "lines": 85,
+        "statements": 85
       }
     },
     "coverageReporters": [
