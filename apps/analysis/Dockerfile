@@ -45,14 +45,15 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
 
 COPY --from=builder --chown=nodejs:nodejs /app/dist/apps/analysis ./dist
 
+# Install glibc compatibility (required for onnxruntime-node) and wget
+RUN apk add --no-cache libc6-compat wget
+
 # Pre-download the sentiment analysis model during build
 # This avoids runtime downloads and ensures the container works offline
 ENV ML_MODEL_CACHE_DIR=/app/models-cache
 RUN mkdir -p /app/models-cache && \
     node -e "import('@huggingface/transformers').then(m => m.pipeline('sentiment-analysis', 'Xenova/distilbert-base-uncased-finetuned-sst-2-english', { dtype: 'q8', cache_dir: '/app/models-cache' }))" && \
     chown -R nodejs:nodejs /app/models-cache
-
-RUN apk add --no-cache wget
 
 USER nodejs
 
