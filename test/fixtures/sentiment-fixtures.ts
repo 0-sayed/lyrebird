@@ -9,88 +9,91 @@ import { RawDataMessage, SentimentLabel } from '@app/shared-types';
 
 /**
  * Sentiment test cases organized by expected outcome
- * Used for parameterized testing across services
+ * Uses industry-standard -1 to +1 scale:
+ *   - Positive: > 0.1 (typically 0.5 to 1.0 for strong positive)
+ *   - Neutral: -0.1 to +0.1
+ *   - Negative: < -0.1 (typically -0.5 to -1.0 for strong negative)
  */
 export const SENTIMENT_TEST_CASES = {
   positive: [
     {
       text: 'I absolutely love this product! It exceeded all my expectations.',
-      minScore: 0.7,
+      minScore: 0.5,
       maxScore: 1.0,
     },
     {
       text: 'This is the best purchase I have ever made. Amazing quality!',
-      minScore: 0.7,
+      minScore: 0.5,
       maxScore: 1.0,
     },
     {
       text: 'Fantastic experience, highly recommend to everyone.',
-      minScore: 0.6,
+      minScore: 0.4,
       maxScore: 1.0,
     },
     {
       text: 'Great value for money, works perfectly!',
-      minScore: 0.6,
+      minScore: 0.4,
       maxScore: 1.0,
     },
     {
       text: 'Excellent customer service and fast shipping.',
-      minScore: 0.6,
+      minScore: 0.4,
       maxScore: 1.0,
     },
   ],
   negative: [
     {
       text: 'This is terrible. Complete waste of money.',
-      minScore: 0.0,
-      maxScore: 0.3,
+      minScore: -1.0,
+      maxScore: -0.5,
     },
     {
       text: 'Worst product I have ever bought. Avoid at all costs.',
-      minScore: 0.0,
-      maxScore: 0.3,
+      minScore: -1.0,
+      maxScore: -0.5,
     },
     {
       text: 'Horrible quality, broke within a day. Very disappointed.',
-      minScore: 0.0,
-      maxScore: 0.4,
+      minScore: -1.0,
+      maxScore: -0.4,
     },
     {
       text: 'I hate this so much. Returning immediately.',
-      minScore: 0.0,
-      maxScore: 0.3,
+      minScore: -1.0,
+      maxScore: -0.5,
     },
     {
       text: 'Awful experience, will never buy again.',
-      minScore: 0.0,
-      maxScore: 0.4,
+      minScore: -1.0,
+      maxScore: -0.4,
     },
   ],
   neutral: [
     {
       text: 'The product arrived on time.',
-      minScore: 0.35,
-      maxScore: 0.65,
+      minScore: -0.2,
+      maxScore: 0.2,
     },
     {
       text: 'It works as described in the manual.',
-      minScore: 0.35,
-      maxScore: 0.65,
+      minScore: -0.2,
+      maxScore: 0.2,
     },
     {
       text: 'Average quality, nothing special.',
-      minScore: 0.35,
-      maxScore: 0.65,
+      minScore: -0.2,
+      maxScore: 0.2,
     },
     {
       text: 'It is okay for the price.',
-      minScore: 0.35,
-      maxScore: 0.65,
+      minScore: -0.2,
+      maxScore: 0.2,
     },
     {
       text: 'Standard product, meets basic expectations.',
-      minScore: 0.35,
-      maxScore: 0.65,
+      minScore: -0.2,
+      maxScore: 0.2,
     },
   ],
 } as const;
