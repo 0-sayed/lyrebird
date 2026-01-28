@@ -3,6 +3,7 @@ import { JobsRepository } from '@app/database';
 import {
   JobCompleteMessage,
   JobFailedMessage,
+  InitialBatchCompleteMessage,
   JobStatus,
 } from '@app/shared-types';
 
@@ -75,6 +76,42 @@ export class JobEventsService {
       failedAt instanceof Date ? failedAt.toISOString() : failedAt;
     this.logger.warn(
       `[${correlationId}] Job ${jobId} marked as FAILED at ${failedAtStr}`,
+    );
+  }
+
+  /**
+   * Handle initial batch complete from Ingestion service
+   * Transitions job from PENDING to IN_PROGRESS
+   */
+  async handleInitialBatchComplete(
+    message: InitialBatchCompleteMessage,
+    correlationId: string,
+  ): Promise<void> {
+    const { jobId, initialBatchCount, streamingActive, completedAt } = message;
+
+    this.logger.log(
+      `[${correlationId}] Processing initial batch complete: ${jobId}`,
+    );
+    this.logger.log(
+      `[${correlationId}] Initial batch: ${initialBatchCount} posts, streaming active: ${streamingActive}`,
+    );
+
+    // Verify job exists
+    const job = await this.jobsRepository.findById(jobId);
+    if (!job) {
+      this.logger.warn(
+        `[${correlationId}] Job not found for initial batch complete: ${jobId}`,
+      );
+      return;
+    }
+
+    // Update job status to IN_PROGRESS
+    await this.jobsRepository.updateStatus(jobId, JobStatus.IN_PROGRESS);
+
+    const completedAtStr =
+      completedAt instanceof Date ? completedAt.toISOString() : completedAt;
+    this.logger.log(
+      `[${correlationId}] Job ${jobId} transitioned to IN_PROGRESS at ${completedAtStr}`,
     );
   }
 }

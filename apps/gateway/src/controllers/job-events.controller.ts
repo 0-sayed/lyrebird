@@ -8,7 +8,12 @@ import {
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import type { Channel, Message } from 'amqplib';
 import { MESSAGE_PATTERNS, JobStatus } from '@app/shared-types';
-import type { JobCompleteMessage, JobFailedMessage } from '@app/shared-types';
+import type {
+  JobCompleteMessage,
+  JobFailedMessage,
+  DataUpdateMessage,
+  InitialBatchCompleteMessage,
+} from '@app/shared-types';
 import { JobEventsService } from '../services/job-events.service';
 import { JOB_EVENTS } from '../events';
 
@@ -120,6 +125,113 @@ export class JobEventsController {
       );
 
       // TODO Phase 3: Replace with DLQ after N retries
+      const shouldRequeue = this.isTransientError(error);
+      channel.nack(originalMsg, false, shouldRequeue);
+    }
+  }
+
+  /**
+   * Listen for JOB_DATA_UPDATE messages from Analysis Service
+   *
+   * Message Flow:
+   * Analysis -> RabbitMQ ('job.data_update') -> Gateway (this handler) -> SSE
+   *
+   * This enables real-time chart updates as data points are processed.
+   */
+  @MessagePattern(MESSAGE_PATTERNS.JOB_DATA_UPDATE)
+  handleDataUpdate(
+    @Payload() data: DataUpdateMessage,
+    @Ctx() context: RmqContext,
+  ) {
+    const channel = context.getChannelRef() as Channel;
+    const originalMsg = context.getMessage() as Message;
+    const correlationId = String(
+      originalMsg.properties?.correlationId || data.jobId || 'unknown',
+    );
+
+    this.logger.debug(
+      `[${correlationId}] Received ${MESSAGE_PATTERNS.JOB_DATA_UPDATE}`,
+    );
+
+    try {
+      // Emit internal event for SSE subscribers
+      // No database update needed here - Analysis service already persisted the data
+      this.eventEmitter.emit(JOB_EVENTS.DATA_UPDATE, {
+        jobId: data.jobId,
+        dataPoint: data.dataPoint,
+        totalProcessed: data.totalProcessed,
+        timestamp: new Date(data.analyzedAt),
+        correlationId,
+      });
+
+      // Acknowledge successful processing
+      channel.ack(originalMsg);
+    } catch (error) {
+      this.logger.error(
+        `[${correlationId}] Error processing data update`,
+        error instanceof Error ? error.stack : String(error),
+      );
+
+      // Data updates are not critical - don't requeue to prevent backlog
+      channel.nack(originalMsg, false, false);
+    }
+  }
+
+  /**
+   * Listen for JOB_INITIAL_BATCH_COMPLETE messages from Ingestion Service
+   *
+   * Message Flow:
+   * Ingestion -> RabbitMQ ('job.initial_batch_complete') -> Gateway (this handler) -> SSE
+   *
+   * This signals that the initial batch fetch is complete and continuous polling has begun.
+   * The job should transition from PENDING to IN_PROGRESS.
+   */
+  @MessagePattern(MESSAGE_PATTERNS.JOB_INITIAL_BATCH_COMPLETE)
+  async handleInitialBatchComplete(
+    @Payload() data: InitialBatchCompleteMessage,
+    @Ctx() context: RmqContext,
+  ) {
+    const channel = context.getChannelRef() as Channel;
+    const originalMsg = context.getMessage() as Message;
+    const correlationId = String(
+      originalMsg.properties?.correlationId || data.jobId || 'unknown',
+    );
+
+    this.logger.log(
+      `[${correlationId}] Received ${MESSAGE_PATTERNS.JOB_INITIAL_BATCH_COMPLETE}`,
+    );
+    this.logger.log(
+      `[${correlationId}] Initial batch: ${data.initialBatchCount} posts, streaming active: ${data.streamingActive}`,
+    );
+
+    try {
+      // Update job status to IN_PROGRESS and notify SSE subscribers
+      await this.jobEventsService.handleInitialBatchComplete(
+        data,
+        correlationId,
+      );
+
+      // Emit internal event for SSE subscribers
+      this.eventEmitter.emit(JOB_EVENTS.STATUS_CHANGED, {
+        jobId: data.jobId,
+        status: JobStatus.IN_PROGRESS,
+        initialBatchCount: data.initialBatchCount,
+        streamingActive: data.streamingActive,
+        timestamp: new Date(),
+        correlationId,
+      });
+
+      // Acknowledge successful processing
+      channel.ack(originalMsg);
+      this.logger.log(
+        `[${correlationId}] Initial batch complete processed, job now IN_PROGRESS`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `[${correlationId}] Error processing initial batch complete`,
+        error instanceof Error ? error.stack : String(error),
+      );
+
       const shouldRequeue = this.isTransientError(error);
       channel.nack(originalMsg, false, shouldRequeue);
     }
