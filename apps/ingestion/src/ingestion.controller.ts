@@ -8,7 +8,7 @@ import {
 import type { Channel, Message } from 'amqplib';
 import { IngestionService } from './ingestion.service';
 import { MESSAGE_PATTERNS, sanitizeForLog } from '@app/shared-types';
-import type { StartJobMessage } from '@app/shared-types';
+import type { StartJobMessage, CancelJobMessage } from '@app/shared-types';
 
 @Controller()
 export class IngestionController {
@@ -77,6 +77,54 @@ export class IngestionController {
         this.logger.error(`[${correlationId}] Discarding message (no requeue)`);
         channel.nack(originalMsg, false, false);
       }
+    }
+  }
+
+  /**
+   * Listen for JOB_CANCEL messages from Gateway
+   *
+   * Message Flow:
+   * Gateway -> RabbitMQ ('job.cancel') -> Ingestion (this handler)
+   */
+  @MessagePattern(MESSAGE_PATTERNS.JOB_CANCEL)
+  handleCancelJob(
+    @Payload() data: CancelJobMessage,
+    @Ctx() context: RmqContext,
+  ) {
+    const channel = context.getChannelRef() as Channel;
+    const originalMsg = context.getMessage() as Message;
+
+    // Extract correlation ID from message properties
+    const correlationId: string =
+      (originalMsg.properties?.correlationId as string | undefined) ||
+      data.jobId ||
+      'unknown';
+
+    this.logger.log(
+      `[${correlationId}] Received ${MESSAGE_PATTERNS.JOB_CANCEL}`,
+    );
+
+    try {
+      if (!data.jobId) {
+        this.logger.error(
+          `[${correlationId}] Invalid cancel message: missing jobId`,
+        );
+        channel.nack(originalMsg, false, false);
+        return;
+      }
+
+      // Cancel the job in the ingestion service
+      this.ingestionService.cancelJob(data.jobId, correlationId);
+
+      channel.ack(originalMsg);
+      this.logger.log(`[${correlationId}] Job cancellation acknowledged`);
+    } catch (error) {
+      this.logger.error(
+        `[${correlationId}] Error processing cancel message`,
+        error instanceof Error ? error.stack : String(error),
+      );
+      // Don't requeue cancel messages - the job is being deleted anyway
+      channel.nack(originalMsg, false, false);
     }
   }
 
