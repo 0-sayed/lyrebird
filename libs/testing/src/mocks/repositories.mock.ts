@@ -11,6 +11,7 @@ export interface MockJob {
   createdAt: Date;
   updatedAt: Date;
   completedAt: Date | null;
+  error?: string | null;
 }
 
 /**
@@ -78,6 +79,15 @@ export const createMockJobsRepository = (
     return job;
   }),
 
+  delete: jest.fn((jobId: string): MockJob | undefined => {
+    const job = store.get(jobId);
+    if (job) {
+      store.delete(jobId);
+      return job;
+    }
+    return undefined;
+  }),
+
   // Expose store for test assertions
   _store: store,
 });
@@ -92,6 +102,7 @@ export const createMockSentimentDataRepository = () => ({
   countByJobId: jest.fn().mockResolvedValue(0),
   getAverageSentimentByJobId: jest.fn().mockResolvedValue(null),
   getSentimentDistributionByJobId: jest.fn().mockResolvedValue([]),
+  deleteByJobId: jest.fn().mockResolvedValue(undefined),
 });
 
 export type MockJobsRepository = ReturnType<typeof createMockJobsRepository>;
