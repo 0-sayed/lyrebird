@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Delete,
   Body,
   Param,
   HttpCode,
@@ -138,9 +139,32 @@ export class GatewayController {
           sentimentLabel: item.sentimentLabel,
           sentimentScore: item.sentimentScore,
           source: item.source,
+          sourceUrl: item.sourceUrl ?? undefined,
+          authorName: item.authorName ?? undefined,
+          publishedAt: item.publishedAt ?? item.analyzedAt, // Fallback to analyzedAt if publishedAt is null
           analyzedAt: item.analyzedAt,
         })),
       },
     };
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete a job and its associated data' })
+  @ApiParam({ name: 'id', description: 'Job UUID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Job deleted successfully',
+  })
+  @ApiResponse({ status: 404, description: 'Job not found' })
+  async deleteJob(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() request: Request,
+  ): Promise<{ success: boolean }> {
+    const correlationId = request.correlationId ?? 'unknown';
+
+    this.logger.log(`[${correlationId}] Deleting job: ${id}`);
+
+    return this.gatewayService.deleteJob(id);
   }
 }

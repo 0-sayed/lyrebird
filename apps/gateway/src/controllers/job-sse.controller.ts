@@ -19,7 +19,12 @@ import {
 import { JobsRepository } from '@app/database';
 import { JobStatus } from '@app/shared-types';
 import { JOB_EVENTS, SSE_MESSAGE_TYPES } from '../events';
-import type { JobCompletedEvent, JobFailedEvent } from '../events';
+import type {
+  JobCompletedEvent,
+  JobFailedEvent,
+  JobDataUpdateEvent,
+  JobStatusChangedEvent,
+} from '../events';
 
 @ApiTags('jobs')
 @Controller('api/jobs')
@@ -180,6 +185,44 @@ export class JobSseController {
           subscriber.complete();
           destroy$.next();
           destroy$.complete();
+        });
+
+      // Listen for data update events for this specific job (real-time chart updates)
+      fromEvent<JobDataUpdateEvent>(eventEmitterAdapter, JOB_EVENTS.DATA_UPDATE)
+        .pipe(
+          filter((event) => event.jobId === jobId),
+          takeUntil(destroy$),
+        )
+        .subscribe((event) => {
+          subscriber.next(
+            this.createMessageEvent(SSE_MESSAGE_TYPES.DATA_UPDATE, {
+              jobId: event.jobId,
+              dataPoint: event.dataPoint,
+              totalProcessed: event.totalProcessed,
+              timestamp: event.timestamp,
+            }),
+          );
+        });
+
+      // Listen for status change events (e.g., PENDING -> IN_PROGRESS)
+      fromEvent<JobStatusChangedEvent>(
+        eventEmitterAdapter,
+        JOB_EVENTS.STATUS_CHANGED,
+      )
+        .pipe(
+          filter((event) => event.jobId === jobId),
+          takeUntil(destroy$),
+        )
+        .subscribe((event) => {
+          subscriber.next(
+            this.createMessageEvent(SSE_MESSAGE_TYPES.STATUS, {
+              jobId: event.jobId,
+              status: event.status,
+              initialBatchCount: event.initialBatchCount,
+              streamingActive: event.streamingActive,
+              timestamp: event.timestamp,
+            }),
+          );
         });
 
       // Heartbeat every 30 seconds to keep connection alive
