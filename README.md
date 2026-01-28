@@ -5,6 +5,9 @@
 [![Node.js](https://img.shields.io/badge/Node.js-22+-green.svg)](https://nodejs.org/)
 [![NestJS](https://img.shields.io/badge/NestJS-11-red.svg)](https://nestjs.com/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
+[![Status](https://img.shields.io/badge/Status-Beta-blue.svg)](BETA-STATUS.md)
+
+> **⚠️ Beta Software**: Lyrebird is currently in beta. Features and APIs are subject to change.
 
 A distributed microservices platform for real-time sentiment analysis of Bluesky content.
 

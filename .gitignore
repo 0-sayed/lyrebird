@@ -4,6 +4,10 @@ dist/
 build/
 .pnpm-debug.log*
 
+# Build output
+dist/
+build/
+
 # Environment / Secrets
 .env
 .env.test
@@ -60,3 +64,7 @@ pids
 .local/
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 .eslintcache
+
+# ML Model Cache
+models-cache/
+.models-cache-test/

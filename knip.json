@@ -1,20 +1,26 @@
 {
-  "$schema": "https://unpkg.com/knip@5.43.0/schema.json",
+  "$schema": "https://unpkg.com/knip@5/schema.json",
   "ignoreExportsUsedInFile": true,
   "workspaces": {
     ".": {
       "entry": [
-        "apps/*/src/main.ts",
-        "apps/*/src/index.ts",
+        "apps/gateway/src/main.ts",
+        "apps/ingestion/src/main.ts",
+        "apps/analysis/src/main.ts",
         "libs/*/src/index.ts",
         "libs/testing/src/**/*.ts"
       ],
-      "project": ["apps/**/*.ts", "libs/**/*.ts"],
+      "project": [
+        "apps/gateway/src/**/*.ts",
+        "apps/ingestion/src/**/*.ts",
+        "apps/analysis/src/**/*.ts",
+        "libs/*/src/**/*.ts",
+        "test/**/*.ts"
+      ],
       "ignore": [
         "**/*.spec.ts",
         "**/*.e2e-spec.ts",
-        "apps/*/test/**",
-        "test/**",
+        "**/test/**",
         "coverage/**",
         "dist/**",
         "**/*.d.ts",
@@ -39,7 +45,13 @@
       "ignore": [
         "**/*.test.ts",
         "**/*.test.tsx"
-      ]
+      ],
+      "vitest": {
+        "entry": ["src/**/*.{test,spec}.{ts,tsx}", "src/__tests__/setup.ts"]
+      },
+      "playwright": {
+        "entry": ["e2e/**/*.{ts,tsx}"]
+      }
     }
   }
 }
