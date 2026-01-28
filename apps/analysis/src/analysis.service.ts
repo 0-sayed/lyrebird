@@ -13,6 +13,7 @@ import {
   RawDataMessage,
   JobCompleteMessage,
   IngestionCompleteMessage,
+  DataUpdateMessage,
   JobStatus,
   SentimentLabel,
 } from '@app/shared-types';
@@ -30,11 +31,19 @@ const JOB_TRACKER_MAX_TTL_MS = 24 * 60 * 60 * 1000;
 // Cleanup interval (15 minutes)
 const CLEANUP_INTERVAL_MS = 15 * 60 * 1000;
 
+// Completion timeout: How long to wait after ingestion complete before forcing completion
+const COMPLETION_TIMEOUT_MS = 30_000; // 30 seconds
+
+// Minimum completion threshold: Complete job if we've processed at least this percentage
+// of expected items and no new messages arrive within COMPLETION_TIMEOUT_MS
+const COMPLETION_THRESHOLD_PERCENT = 0.95; // 95%
+
 /**
  * Job tracking state
  * - processed: number of items we've analyzed
  * - expected: total items to expect (set by JOB_INGESTION_COMPLETE)
  * - ingestionComplete: whether we've received the ingestion complete signal
+ * - ingestionCompleteAt: timestamp when ingestion complete was received
  * - createdAt: timestamp when tracker was created (for absolute TTL)
  * - lastUpdated: timestamp of last activity (for staleness check)
  */
@@ -42,6 +51,7 @@ interface JobTracker {
   processed: number;
   expected: number | null; // null until JOB_INGESTION_COMPLETE is received
   ingestionComplete: boolean;
+  ingestionCompleteAt: number | null; // timestamp when JOB_INGESTION_COMPLETE was received
   createdAt: number;
   lastUpdated: number;
 }
@@ -56,6 +66,9 @@ export class AnalysisService implements OnModuleInit, OnModuleDestroy {
 
   // Per-job mutex to prevent race conditions during concurrent message processing
   private readonly jobMutexes = new Map<string, Mutex>();
+
+  // Track completion timeout handles for cleanup
+  private readonly completionTimeouts = new Map<string, NodeJS.Timeout>();
 
   // Cleanup interval handle - stored for proper cleanup on module destroy
   private cleanupIntervalId: NodeJS.Timeout | null = null;
@@ -95,6 +108,10 @@ export class AnalysisService implements OnModuleInit, OnModuleDestroy {
       clearInterval(this.cleanupIntervalId);
       this.cleanupIntervalId = null;
     }
+    // Clear all completion timeouts
+    for (const [jobId] of this.completionTimeouts) {
+      this.clearCompletionTimeout(jobId);
+    }
     // Ensure final cleanup of stale trackers before shutdown
     this.cleanupStaleTrackers();
   }
@@ -128,6 +145,7 @@ export class AnalysisService implements OnModuleInit, OnModuleDestroy {
         }
         this.jobProcessingTracker.delete(jobId);
         this.jobMutexes.delete(jobId);
+        this.clearCompletionTimeout(jobId);
       }
     }
   }
@@ -162,6 +180,15 @@ export class AnalysisService implements OnModuleInit, OnModuleDestroy {
     const { jobId, textContent, source } = message;
 
     try {
+      // Validate job exists before processing
+      const job = await this.jobsRepository.findById(jobId);
+      if (!job) {
+        this.logger.warn(
+          `[${correlationId}] Job ${jobId} not found, skipping processing (job may have been deleted)`,
+        );
+        return;
+      }
+
       this.logger.log(`[${correlationId}] Analyzing text from ${source}`);
 
       // Step 1: Perform sentiment analysis using BERT
@@ -225,15 +252,52 @@ export class AnalysisService implements OnModuleInit, OnModuleDestroy {
         analyzedAt: new Date(),
       };
 
-      // Step 3: Write to PostgreSQL
+      // Step 3: Write to PostgreSQL (returns null for duplicates)
       const savedRecord =
         await this.sentimentDataRepository.create(sentimentRecord);
+
+      // If duplicate, skip further processing but still track progress
+      if (!savedRecord) {
+        this.logger.debug(
+          `[${correlationId}] Skipping duplicate post: ${message.sourceUrl}`,
+        );
+        // Still track progress for duplicates to ensure job completion
+        await this.trackJobProgress(jobId, correlationId);
+        return;
+      }
+
       this.logger.log(
         `[${correlationId}] Saved sentiment data: ${savedRecord.id}`,
       );
 
       // Step 4: Track job progress and check for completion
-      await this.trackJobProgress(jobId, correlationId);
+      const totalProcessed = await this.trackJobProgress(jobId, correlationId);
+
+      // Step 5: Emit real-time data update event for SSE
+      const dataUpdateMessage: DataUpdateMessage = {
+        jobId,
+        dataPoint: {
+          id: savedRecord.id,
+          textContent: savedRecord.textContent,
+          source: savedRecord.source,
+          sourceUrl: savedRecord.sourceUrl ?? undefined,
+          authorName: savedRecord.authorName ?? undefined,
+          sentimentScore: savedRecord.sentimentScore,
+          sentimentLabel: label,
+          publishedAt: publishedAtDate,
+        },
+        totalProcessed,
+        analyzedAt: new Date(),
+      };
+
+      this.rabbitmqService.emit(
+        MESSAGE_PATTERNS.JOB_DATA_UPDATE,
+        dataUpdateMessage,
+      );
+
+      this.logger.debug(
+        `[${correlationId}] Emitted data update for job ${jobId} (${totalProcessed} processed)`,
+      );
 
       const duration = Date.now() - startTime;
       this.logger.log(
@@ -312,6 +376,7 @@ export class AnalysisService implements OnModuleInit, OnModuleDestroy {
         processed: 0,
         expected: null, // Unknown until JOB_INGESTION_COMPLETE is received
         ingestionComplete: false,
+        ingestionCompleteAt: null,
         createdAt: now,
         lastUpdated: now,
       };
@@ -329,20 +394,143 @@ export class AnalysisService implements OnModuleInit, OnModuleDestroy {
     correlationId: string,
   ): Promise<void> {
     const { jobId, totalItems } = message;
+
+    // Check if job still exists before processing completion
+    // This handles the case where a job was deleted but messages remain in RabbitMQ queue
+    const job = await this.jobsRepository.findById(jobId);
+    if (!job) {
+      this.logger.warn(
+        `[${correlationId}] Job ${jobId} not found, skipping ingestion complete processing (job may have been deleted)`,
+      );
+      // Clean up any tracker state for this deleted job
+      this.jobProcessingTracker.delete(jobId);
+      this.jobMutexes.delete(jobId);
+      this.clearCompletionTimeout(jobId);
+      return;
+    }
+
     const mutex = this.getJobMutex(jobId);
 
     this.logger.log(
       `[${correlationId}] Received JOB_INGESTION_COMPLETE: ${totalItems} items expected`,
     );
 
+    let needsTimeoutSchedule = false;
+
     await mutex.runExclusive(async () => {
       const tracker = this.getOrCreateTracker(jobId);
       tracker.expected = totalItems;
       tracker.ingestionComplete = true;
+      tracker.ingestionCompleteAt = Date.now();
       tracker.lastUpdated = Date.now();
 
       // Check if we've already processed all items (race condition: all items processed before this message)
       await this.checkAndCompleteJob(jobId, correlationId, tracker);
+
+      // If job didn't complete, schedule a timeout for threshold-based completion
+      if (this.jobProcessingTracker.has(jobId)) {
+        needsTimeoutSchedule = true;
+      }
+    });
+
+    // Schedule timeout outside mutex to avoid holding lock during async scheduling
+    if (needsTimeoutSchedule) {
+      this.scheduleCompletionTimeout(jobId, correlationId);
+    }
+  }
+
+  /**
+   * Schedule a completion timeout check for a job
+   * This handles edge cases where a small number of messages are lost
+   */
+  private scheduleCompletionTimeout(
+    jobId: string,
+    correlationId: string,
+  ): void {
+    // Clear any existing timeout for this job
+    this.clearCompletionTimeout(jobId);
+
+    this.logger.debug(
+      `[${correlationId}] Scheduling completion timeout in ${COMPLETION_TIMEOUT_MS}ms`,
+    );
+
+    const timeoutHandle = setTimeout(() => {
+      void this.handleCompletionTimeout(jobId, correlationId);
+    }, COMPLETION_TIMEOUT_MS);
+
+    this.completionTimeouts.set(jobId, timeoutHandle);
+  }
+
+  /**
+   * Clear a scheduled completion timeout
+   */
+  private clearCompletionTimeout(jobId: string): void {
+    const existingTimeout = this.completionTimeouts.get(jobId);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
+      this.completionTimeouts.delete(jobId);
+    }
+  }
+
+  /**
+   * Handle completion timeout - complete job if threshold is met
+   */
+  private async handleCompletionTimeout(
+    jobId: string,
+    correlationId: string,
+  ): Promise<void> {
+    this.completionTimeouts.delete(jobId);
+
+    const mutex = this.getJobMutex(jobId);
+
+    await mutex.runExclusive(async () => {
+      const tracker = this.jobProcessingTracker.get(jobId);
+      if (!tracker) {
+        // Job already completed
+        return;
+      }
+
+      if (!tracker.ingestionComplete || tracker.expected === null) {
+        // Ingestion not complete yet, don't force completion
+        return;
+      }
+
+      // Check if we've hit the threshold
+      const completionRatio = tracker.processed / tracker.expected;
+      const timeSinceLastUpdate = Date.now() - tracker.lastUpdated;
+
+      this.logger.log(
+        `[${correlationId}] Completion timeout check: ${tracker.processed}/${tracker.expected} (${(completionRatio * 100).toFixed(1)}%), ` +
+          `last update ${timeSinceLastUpdate}ms ago`,
+      );
+
+      // Complete if we've processed enough items and no recent activity
+      if (
+        completionRatio >= COMPLETION_THRESHOLD_PERCENT &&
+        timeSinceLastUpdate >= COMPLETION_TIMEOUT_MS / 2
+      ) {
+        this.logger.warn(
+          `[${correlationId}] Completing job with threshold-based fallback: ` +
+            `${tracker.processed}/${tracker.expected} items (${tracker.expected - tracker.processed} missing)`,
+        );
+
+        try {
+          await this.completeJob(jobId, correlationId);
+          this.jobProcessingTracker.delete(jobId);
+          this.jobMutexes.delete(jobId);
+        } catch (error) {
+          this.logger.error(
+            `[${correlationId}] Failed to complete job in timeout handler`,
+            error instanceof Error ? error.stack : String(error),
+          );
+        }
+      } else if (completionRatio < COMPLETION_THRESHOLD_PERCENT) {
+        // Not enough items processed, reschedule timeout
+        this.logger.debug(
+          `[${correlationId}] Below threshold (${(completionRatio * 100).toFixed(1)}% < ${COMPLETION_THRESHOLD_PERCENT * 100}%), rescheduling timeout`,
+        );
+        this.scheduleCompletionTimeout(jobId, correlationId);
+      }
     });
   }
 
@@ -354,18 +542,22 @@ export class AnalysisService implements OnModuleInit, OnModuleDestroy {
    *
    * Note: In production, this state should be in Redis for distributed tracking.
    * For the Walking Skeleton, we use in-memory tracking with mutex protection.
+   *
+   * @returns The total number of items processed so far
    */
   private async trackJobProgress(
     jobId: string,
     correlationId: string,
-  ): Promise<void> {
+  ): Promise<number> {
     const mutex = this.getJobMutex(jobId);
+    let processedCount = 0;
 
     // Acquire lock for this job - ensures atomic read-modify-write
     await mutex.runExclusive(async () => {
       const tracker = this.getOrCreateTracker(jobId);
       tracker.processed++;
       tracker.lastUpdated = Date.now();
+      processedCount = tracker.processed;
 
       const expectedStr =
         tracker.expected !== null ? String(tracker.expected) : '?';
@@ -376,6 +568,8 @@ export class AnalysisService implements OnModuleInit, OnModuleDestroy {
       // Check if job is complete (only if we know the expected count)
       await this.checkAndCompleteJob(jobId, correlationId, tracker);
     });
+
+    return processedCount;
   }
 
   /**
@@ -410,6 +604,7 @@ export class AnalysisService implements OnModuleInit, OnModuleDestroy {
         // Only clean up tracker after successful completion
         this.jobProcessingTracker.delete(jobId);
         this.jobMutexes.delete(jobId);
+        this.clearCompletionTimeout(jobId);
       } catch (error) {
         // Preserve tracker for potential retry - don't delete on failure
         // The mutex will be properly released by runExclusive() even though we re-throw
