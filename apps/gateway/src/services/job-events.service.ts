@@ -105,6 +105,15 @@ export class JobEventsService {
       return;
     }
 
+    // Only transition to IN_PROGRESS if job is still PENDING
+    // This guards against status regression on message redelivery
+    if (job.status !== JobStatus.PENDING) {
+      this.logger.warn(
+        `[${correlationId}] Job ${jobId} status is ${job.status}, expected ${JobStatus.PENDING}. Skipping transition to IN_PROGRESS.`,
+      );
+      return;
+    }
+
     // Update job status to IN_PROGRESS
     await this.jobsRepository.updateStatus(jobId, JobStatus.IN_PROGRESS);
 
