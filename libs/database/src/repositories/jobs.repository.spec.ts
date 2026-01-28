@@ -3,37 +3,38 @@ import { JobsRepository } from './jobs.repository';
 import { DatabaseService } from '../database.service';
 import { JobStatus } from '@app/shared-types';
 import { Job } from '../schema';
+import { createMockDrizzleQueryBuilder } from '@app/testing';
 
+/**
+ * Unit tests for JobsRepository
+ *
+ * These tests verify the query builder logic using mocks.
+ * For integration tests with a real database, see jobs.repository.integration.spec.ts
+ */
 describe('JobsRepository', () => {
   let repository: JobsRepository;
-  let mockDatabaseService: Partial<DatabaseService>;
+  let mockDb: ReturnType<typeof createMockDrizzleQueryBuilder>;
 
-  const mockJob: Job = {
+  /**
+   * Creates a mock job with default values
+   */
+  const createMockJob = (overrides: Partial<Job> = {}): Job => ({
     id: '123e4567-e89b-12d3-a456-426614174000',
     prompt: 'Test prompt for TDD',
     status: JobStatus.PENDING,
     searchStrategy: null,
     errorMessage: null,
-    createdAt: new Date(),
-    updatedAt: new Date(),
+    createdAt: new Date('2026-01-24T12:00:00Z'),
+    updatedAt: new Date('2026-01-24T12:00:00Z'),
     completedAt: null,
-  };
+    ...overrides,
+  });
 
   beforeEach(async () => {
-    // Mock the database service with chainable query builder
-    const mockQueryBuilder = {
-      insert: jest.fn().mockReturnThis(),
-      values: jest.fn().mockReturnThis(),
-      returning: jest.fn().mockResolvedValue([mockJob]),
-      select: jest.fn().mockReturnThis(),
-      from: jest.fn().mockReturnThis(),
-      where: jest.fn().mockResolvedValue([mockJob]),
-      update: jest.fn().mockReturnThis(),
-      set: jest.fn().mockReturnThis(),
-    };
+    mockDb = createMockDrizzleQueryBuilder();
 
-    mockDatabaseService = {
-      db: mockQueryBuilder as unknown as DatabaseService['db'],
+    const mockDatabaseService: Partial<DatabaseService> = {
+      db: mockDb as unknown as DatabaseService['db'],
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -47,121 +48,208 @@ describe('JobsRepository', () => {
   });
 
   describe('create', () => {
-    it('should create a job with valid data', async () => {
-      const job = await repository.create({
+    it('should return created job when insert succeeds', async () => {
+      const mockJob = createMockJob();
+      mockDb.returning.mockResolvedValue([mockJob]);
+
+      const result = await repository.create({
         prompt: 'Test prompt for TDD',
         status: JobStatus.PENDING,
       });
 
-      expect(job).toBeDefined();
-      expect(job.id).toBe(mockJob.id);
-      expect(job.prompt).toBe('Test prompt for TDD');
-      expect(job.status).toBe(JobStatus.PENDING);
+      expect(result).toEqual(mockJob);
+      expect(mockDb.insert).toHaveBeenCalled();
+      expect(mockDb.values).toHaveBeenCalledWith({
+        prompt: 'Test prompt for TDD',
+        status: JobStatus.PENDING,
+      });
+      expect(mockDb.returning).toHaveBeenCalled();
     });
 
-    it('should call insert with correct values', async () => {
-      const mockInsert = jest.fn().mockReturnThis();
-      const mockValues = jest.fn().mockReturnThis();
-      const mockReturning = jest.fn().mockResolvedValue([mockJob]);
+    it.each([
+      [JobStatus.PENDING],
+      [JobStatus.IN_PROGRESS],
+      [JobStatus.COMPLETED],
+      [JobStatus.FAILED],
+    ] as const)('should accept status %s', async (status: JobStatus) => {
+      const mockJob = createMockJob({ status });
+      mockDb.returning.mockResolvedValue([mockJob]);
 
-      const mockQueryBuilder = {
-        insert: mockInsert,
-        values: mockValues,
-        returning: mockReturning,
-      };
+      const result = await repository.create({ prompt: 'Test', status });
 
-      (mockDatabaseService as { db: unknown }).db =
-        mockQueryBuilder as unknown as DatabaseService['db'];
+      expect(result.status).toBe(status);
+    });
 
-      const input = {
-        prompt: 'Test prompt',
-        status: JobStatus.PENDING,
-      };
-
-      const result = await repository.create(input);
-
-      // Verify the query builder methods were called with correct input
-      expect(mockInsert).toHaveBeenCalled();
-      expect(mockValues).toHaveBeenCalledWith(
-        expect.objectContaining({
-          prompt: 'Test prompt',
-          status: JobStatus.PENDING,
-        }),
+    it('should propagate database errors', async () => {
+      mockDb.returning.mockRejectedValue(
+        new Error('Database connection failed'),
       );
-      expect(mockReturning).toHaveBeenCalled();
-      expect(result).toBe(mockJob);
+
+      await expect(
+        repository.create({ prompt: 'Test', status: JobStatus.PENDING }),
+      ).rejects.toThrow('Database connection failed');
     });
   });
 
   describe('findById', () => {
     it('should return job when exists', async () => {
-      const found = await repository.findById(mockJob.id);
+      const mockJob = createMockJob();
+      mockDb.where.mockResolvedValue([mockJob]);
 
-      expect(found).toBeDefined();
-      expect(found?.id).toBe(mockJob.id);
+      const result = await repository.findById(mockJob.id);
+
+      expect(result).toEqual(mockJob);
+      expect(mockDb.select).toHaveBeenCalled();
+      expect(mockDb.from).toHaveBeenCalled();
+      expect(mockDb.where).toHaveBeenCalled();
     });
 
-    it('should return undefined for non-existent job', async () => {
-      // Override mock for this test
-      const emptyQueryBuilder = {
-        select: jest.fn().mockReturnThis(),
-        from: jest.fn().mockReturnThis(),
-        where: jest.fn().mockResolvedValue([]),
-      };
-      (mockDatabaseService as { db: unknown }).db = emptyQueryBuilder;
+    it('should return undefined when job does not exist', async () => {
+      mockDb.where.mockResolvedValue([]);
 
-      const found = await repository.findById(
-        '00000000-0000-0000-0000-000000000999',
-      );
+      const result = await repository.findById('non-existent-id');
 
-      expect(found).toBeUndefined();
+      expect(result).toBeUndefined();
+    });
+
+    it.each([
+      '123e4567-e89b-12d3-a456-426614174000',
+      '00000000-0000-0000-0000-000000000000',
+      'ffffffff-ffff-ffff-ffff-ffffffffffff',
+    ])('should query with job ID: %s', async (jobId) => {
+      mockDb.where.mockResolvedValue([]);
+
+      await repository.findById(jobId);
+
+      expect(mockDb.where).toHaveBeenCalled();
     });
   });
 
   describe('updateStatus', () => {
-    it('should update job status', async () => {
-      const updatedJob = { ...mockJob, status: JobStatus.IN_PROGRESS };
-      const mockQueryBuilder = {
-        update: jest.fn().mockReturnThis(),
-        set: jest.fn().mockReturnThis(),
-        where: jest.fn().mockReturnThis(),
-        returning: jest.fn().mockResolvedValue([updatedJob]),
-      };
-      (mockDatabaseService as { db: unknown }).db = mockQueryBuilder;
+    it.each([
+      [JobStatus.PENDING, JobStatus.IN_PROGRESS],
+      [JobStatus.IN_PROGRESS, JobStatus.COMPLETED],
+      [JobStatus.IN_PROGRESS, JobStatus.FAILED],
+      [JobStatus.PENDING, JobStatus.FAILED],
+    ] as const)(
+      'should update status from %s to %s',
+      async (fromStatus: JobStatus, toStatus: JobStatus) => {
+        const mockJob = createMockJob({ status: toStatus });
+        mockDb.returning.mockResolvedValue([mockJob]);
 
-      const updated = await repository.updateStatus(
-        mockJob.id,
-        JobStatus.IN_PROGRESS,
-      );
+        const result = await repository.updateStatus(mockJob.id, toStatus);
 
-      expect(updated.status).toBe(JobStatus.IN_PROGRESS);
+        expect(result.status).toBe(toStatus);
+        expect(mockDb.update).toHaveBeenCalled();
+        expect(mockDb.set).toHaveBeenCalled();
+        expect(mockDb.where).toHaveBeenCalled();
+      },
+    );
+
+    it('should set updatedAt when updating status', async () => {
+      const mockJob = createMockJob({ status: JobStatus.IN_PROGRESS });
+      mockDb.returning.mockResolvedValue([mockJob]);
+
+      await repository.updateStatus(mockJob.id, JobStatus.IN_PROGRESS);
+
+      expect(mockDb.set).toHaveBeenCalled();
+      // Get the first call argument and assert its properties
+      const calls = mockDb.set.mock.calls as Array<
+        [{ status: JobStatus; updatedAt: Date }]
+      >;
+      const setArg = calls[0][0];
+      expect(setArg.status).toBe(JobStatus.IN_PROGRESS);
+      expect(setArg.updatedAt).toBeInstanceOf(Date);
     });
   });
 
   describe('findAll', () => {
     it('should return array of jobs', async () => {
-      const mockQueryBuilder = {
-        select: jest.fn().mockReturnThis(),
-        from: jest.fn().mockResolvedValue([mockJob]),
-      };
-      (mockDatabaseService as { db: unknown }).db = mockQueryBuilder;
+      const mockJobs = [
+        createMockJob({ id: 'job-1', prompt: 'First prompt' }),
+        createMockJob({ id: 'job-2', prompt: 'Second prompt' }),
+      ];
+      mockDb.from.mockResolvedValue(mockJobs);
 
-      const jobs = await repository.findAll();
+      const result = await repository.findAll();
 
-      expect(Array.isArray(jobs)).toBe(true);
-      expect(jobs).toHaveLength(1);
+      expect(result).toHaveLength(2);
+      expect(result).toEqual(mockJobs);
+      expect(mockDb.select).toHaveBeenCalled();
+      expect(mockDb.from).toHaveBeenCalled();
     });
 
     it('should return empty array when no jobs exist', async () => {
-      const mockQueryBuilder = {
-        select: jest.fn().mockReturnThis(),
-        from: jest.fn().mockResolvedValue([]),
-      };
-      (mockDatabaseService as { db: unknown }).db = mockQueryBuilder;
+      mockDb.from.mockResolvedValue([]);
 
-      const jobs = await repository.findAll();
+      const result = await repository.findAll();
 
-      expect(jobs).toHaveLength(0);
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe('delete', () => {
+    it('should return deleted job when exists', async () => {
+      const mockJob = createMockJob();
+      mockDb.returning.mockResolvedValue([mockJob]);
+
+      const result = await repository.delete(mockJob.id);
+
+      expect(result).toEqual(mockJob);
+      expect(mockDb.delete).toHaveBeenCalled();
+      expect(mockDb.where).toHaveBeenCalled();
+    });
+
+    it('should return undefined when job does not exist', async () => {
+      mockDb.returning.mockResolvedValue([]);
+
+      const result = await repository.delete('non-existent-id');
+
+      expect(result).toBeUndefined();
+    });
+
+    it('should propagate database errors', async () => {
+      mockDb.returning.mockRejectedValue(new Error('Foreign key constraint'));
+
+      await expect(repository.delete('job-id')).rejects.toThrow(
+        'Foreign key constraint',
+      );
+    });
+  });
+
+  describe('error handling', () => {
+    it('should propagate errors from create', async () => {
+      mockDb.returning.mockRejectedValue(new Error('DB Error'));
+
+      await expect(
+        repository.create({ prompt: 'Test', status: JobStatus.PENDING }),
+      ).rejects.toThrow('DB Error');
+    });
+
+    it('should propagate errors from findById', async () => {
+      mockDb.where.mockRejectedValue(new Error('DB Error'));
+
+      await expect(repository.findById('id')).rejects.toThrow('DB Error');
+    });
+
+    it('should propagate errors from updateStatus', async () => {
+      mockDb.returning.mockRejectedValue(new Error('DB Error'));
+
+      await expect(
+        repository.updateStatus('id', JobStatus.IN_PROGRESS),
+      ).rejects.toThrow('DB Error');
+    });
+
+    it('should propagate errors from findAll', async () => {
+      mockDb.from.mockRejectedValue(new Error('DB Error'));
+
+      await expect(repository.findAll()).rejects.toThrow('DB Error');
+    });
+
+    it('should propagate errors from delete', async () => {
+      mockDb.returning.mockRejectedValue(new Error('DB Error'));
+
+      await expect(repository.delete('id')).rejects.toThrow('DB Error');
     });
   });
 });

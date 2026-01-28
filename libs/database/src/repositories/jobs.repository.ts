@@ -48,4 +48,16 @@ export class JobsRepository {
   async findAll(): Promise<Job[]> {
     return this.databaseService.db.select().from(jobs);
   }
+
+  /**
+   * Delete a job by ID
+   * @returns The deleted job, or undefined if not found
+   */
+  async delete(jobId: string): Promise<Job | undefined> {
+    const [deletedJob] = await this.databaseService.db
+      .delete(jobs)
+      .where(eq(jobs.id, jobId))
+      .returning();
+    return deletedJob;
+  }
 }
