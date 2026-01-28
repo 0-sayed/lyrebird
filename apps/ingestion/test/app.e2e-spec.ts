@@ -16,12 +16,15 @@ import {
   createMockJobsRepository,
   createMockSentimentDataRepository,
   createMockBlueskyClientService,
-  createMockPollingScraperService,
+  createMockJetstreamManagerService,
 } from '@app/testing';
 import { IngestionController } from '@app/ingestion/ingestion.controller';
 import { IngestionService } from '@app/ingestion/ingestion.service';
 import { HealthController } from '@app/ingestion/health/health.controller';
-import { PollingScraperService } from '@app/ingestion/scrapers/polling-scraper.service';
+import {
+  JetstreamManagerService,
+  JetstreamJobConfig,
+} from '@app/ingestion/jetstream/jetstream-manager.service';
 import { MESSAGE_PATTERNS, RawDataMessage } from '@app/shared-types';
 
 // Create mocks using shared utilities
@@ -30,7 +33,7 @@ const mockSentimentDataRepository = createMockSentimentDataRepository();
 const mockRabbitmqService = createMockRabbitmqService();
 const mockDatabaseService = createMockDatabaseService();
 const mockBlueskyClientService = createMockBlueskyClientService();
-const mockPollingScraperService = createMockPollingScraperService();
+const mockJetstreamManager = createMockJetstreamManagerService();
 
 describe('IngestionController (e2e)', () => {
   let app: INestApplication;
@@ -64,8 +67,8 @@ describe('IngestionController (e2e)', () => {
           useValue: mockBlueskyClientService,
         },
         {
-          provide: PollingScraperService,
-          useValue: mockPollingScraperService,
+          provide: JetstreamManagerService,
+          useValue: mockJetstreamManager,
         },
       ],
     }).compile();
@@ -93,18 +96,19 @@ describe('IngestionService E2E', () => {
   let service: IngestionService;
   let app: INestApplication;
   let mockRmqService: ReturnType<typeof createMockRabbitmqService>;
-  let mockPollingScraper: ReturnType<typeof createMockPollingScraperService>;
+  let mockJetstream: ReturnType<typeof createMockJetstreamManagerService>;
 
   beforeEach(async () => {
     mockRmqService = createMockRabbitmqService();
-    mockPollingScraper = createMockPollingScraperService();
+    mockJetstream = createMockJetstreamManagerService();
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [ConfigModule.forRoot({ isGlobal: true })],
       providers: [
         IngestionService,
         { provide: RabbitmqService, useValue: mockRmqService },
-        { provide: PollingScraperService, useValue: mockPollingScraper },
+        { provide: JetstreamManagerService, useValue: mockJetstream },
+        { provide: JobsRepository, useValue: mockJobsRepository },
       ],
     }).compile();
 
@@ -118,24 +122,24 @@ describe('IngestionService E2E', () => {
   });
 
   describe('processJob', () => {
-    it('should start polling scraper with correct configuration', async () => {
+    it('should register job with Jetstream manager with correct configuration', async () => {
       const testMessage = {
         jobId: 'test-job-123',
         prompt: 'test search query',
         timestamp: new Date(),
       };
 
-      // Mock the startPollingJob to immediately complete
-      mockPollingScraper.startPollingJob.mockImplementation(
-        (config: { jobId: string; prompt: string; onComplete: () => void }) => {
-          config.onComplete();
+      // Mock the registerJob to immediately complete
+      mockJetstream.registerJob.mockImplementation(
+        (config: JetstreamJobConfig) => {
+          config.onComplete(0);
           return Promise.resolve();
         },
       );
 
       await service.processJob(testMessage, 'test-correlation-id');
 
-      expect(mockPollingScraper.startPollingJob).toHaveBeenCalledWith(
+      expect(mockJetstream.registerJob).toHaveBeenCalledWith(
         expect.objectContaining({
           jobId: 'test-job-123',
           prompt: 'test search query',
@@ -161,14 +165,11 @@ describe('IngestionService E2E', () => {
         collectedAt: new Date(),
       };
 
-      // Simulate scraper emitting data and then completing
-      mockPollingScraper.startPollingJob.mockImplementation(
-        async (config: {
-          onData: (data: RawDataMessage) => Promise<void>;
-          onComplete: () => void;
-        }) => {
+      // Simulate Jetstream emitting data and then completing
+      mockJetstream.registerJob.mockImplementation(
+        async (config: JetstreamJobConfig) => {
           await config.onData(mockRawData);
-          config.onComplete();
+          config.onComplete(1);
         },
       );
 
@@ -212,34 +213,32 @@ describe('IngestionService E2E', () => {
         },
       ];
 
-      // Simulate scraper emitting multiple data items
-      mockPollingScraper.startPollingJob.mockImplementation(
-        async (config: {
-          onData: (data: RawDataMessage) => Promise<void>;
-          onComplete: () => void;
-        }) => {
+      // Simulate Jetstream emitting multiple data items
+      mockJetstream.registerJob.mockImplementation(
+        async (config: JetstreamJobConfig) => {
           for (const data of mockDataBatch) {
             await config.onData(data);
           }
-          config.onComplete();
+          config.onComplete(mockDataBatch.length);
         },
       );
 
       await service.processJob(testMessage, 'test-correlation-id');
 
-      // Verify all raw data was emitted to RabbitMQ (3 raw data + 1 ingestion complete)
-      expect(mockRmqService.emit).toHaveBeenCalledTimes(4);
-      mockDataBatch.forEach((data, index) => {
-        expect(mockRmqService.emit).toHaveBeenNthCalledWith(
-          index + 1,
+      // Verify all raw data was emitted to RabbitMQ
+      // 1 JOB_INITIAL_BATCH_COMPLETE + 3 raw data + 1 ingestion complete = 5
+      expect(mockRmqService.emit).toHaveBeenCalledTimes(5);
+
+      // Check raw data emissions
+      mockDataBatch.forEach((data) => {
+        expect(mockRmqService.emit).toHaveBeenCalledWith(
           MESSAGE_PATTERNS.JOB_RAW_DATA,
           data,
         );
       });
 
       // Verify JOB_INGESTION_COMPLETE was emitted
-      expect(mockRmqService.emit).toHaveBeenNthCalledWith(
-        4,
+      expect(mockRmqService.emit).toHaveBeenCalledWith(
         MESSAGE_PATTERNS.JOB_INGESTION_COMPLETE,
         expect.objectContaining({
           jobId: 'test-job-789',
@@ -248,44 +247,74 @@ describe('IngestionService E2E', () => {
       );
     });
 
-    it('should use custom polling options when provided', async () => {
+    it('should use custom job options when provided', async () => {
       const testMessage = {
         jobId: 'test-job-custom',
-        prompt: 'custom polling test',
+        prompt: 'custom job test',
         timestamp: new Date(),
         options: {
-          polling: {
-            pollIntervalMs: 10000,
+          job: {
             maxDurationMs: 300000,
           },
         },
       };
 
-      mockPollingScraper.startPollingJob.mockImplementation(
-        (config: { onComplete: () => void }) => {
-          config.onComplete();
+      mockJetstream.registerJob.mockImplementation(
+        (config: JetstreamJobConfig) => {
+          config.onComplete(0);
           return Promise.resolve();
         },
       );
 
       await service.processJob(testMessage, 'test-correlation-id');
 
-      expect(mockPollingScraper.startPollingJob).toHaveBeenCalledWith(
+      expect(mockJetstream.registerJob).toHaveBeenCalledWith(
         expect.objectContaining({
-          pollIntervalMs: 10000,
           maxDurationMs: 300000,
         }),
       );
     });
   });
 
-  describe('stopJob', () => {
-    it('should stop an active polling job', async () => {
-      await service.stopJob('test-job-to-stop');
+  describe('isJobActive', () => {
+    it('should return true when Jetstream has active jobs', () => {
+      mockJetstream.getStatus.mockReturnValue({
+        enabled: true,
+        isListening: true,
+        connectionStatus: 'connected',
+        activeJobCount: 2,
+        metrics: {},
+      });
 
-      expect(mockPollingScraper.stopPollingJob).toHaveBeenCalledWith(
-        'test-job-to-stop',
-      );
+      expect(service.isJobActive('test-job-123')).toBe(true);
+      expect(mockJetstream.getStatus).toHaveBeenCalled();
+    });
+
+    it('should return false when Jetstream has no active jobs', () => {
+      mockJetstream.getStatus.mockReturnValue({
+        enabled: true,
+        isListening: false,
+        connectionStatus: 'disconnected',
+        activeJobCount: 0,
+        metrics: {},
+      });
+
+      expect(service.isJobActive('test-job-123')).toBe(false);
+    });
+  });
+
+  describe('getActiveJobCount', () => {
+    it('should return the count of active jobs from Jetstream', () => {
+      mockJetstream.getStatus.mockReturnValue({
+        enabled: true,
+        isListening: true,
+        connectionStatus: 'connected',
+        activeJobCount: 3,
+        metrics: {},
+      });
+
+      expect(service.getActiveJobCount()).toBe(3);
+      expect(mockJetstream.getStatus).toHaveBeenCalled();
     });
   });
 });
