@@ -24,8 +24,9 @@ COPY libs ./libs
 
 RUN pnpm build:analysis
 
-# Production stage
-FROM node:${NODE_VERSION} AS production
+# Production stage - using slim (Debian) instead of Alpine for glibc compatibility
+# onnxruntime-node requires glibc, which Alpine's musl cannot provide
+FROM node:22-slim AS production
 
 ARG PNPM_VERSION=10.23.0
 
@@ -33,8 +34,8 @@ ENV NODE_ENV=production
 
 WORKDIR /app
 
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001 -G nodejs
+RUN groupadd -g 1001 nodejs && \
+    useradd -r -u 1001 -g nodejs -s /bin/false nodejs
 
 RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 
@@ -45,8 +46,9 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
 
 COPY --from=builder --chown=nodejs:nodejs /app/dist/apps/analysis ./dist
 
-# Install glibc compatibility (required for onnxruntime-node) and wget
-RUN apk add --no-cache libc6-compat wget
+# Install wget for healthcheck
+RUN apt-get update && apt-get install -y --no-install-recommends wget && \
+    rm -rf /var/lib/apt/lists/*
 
 # Pre-download the sentiment analysis model during build
 # This avoids runtime downloads and ensures the container works offline
