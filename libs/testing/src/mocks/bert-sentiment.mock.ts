@@ -6,14 +6,15 @@ export const createMockBertSentimentService = () => ({
     score: 0.5,
     label: 'neutral',
     confidence: 0.6,
-    source: 'afinn',
+    source: 'local-onnx',
   }),
   isReady: jest.fn().mockReturnValue(true),
   getStatus: jest.fn().mockReturnValue({
     ready: true,
-    provider: 'afinn',
-    huggingfaceConfigured: false,
+    provider: 'local-onnx',
+    modelLoaded: true,
+    modelName: 'Xenova/distilbert-base-uncased-finetuned-sst-2-english',
+    quantization: 'q8',
   }),
-  // Note: BertSentimentService does not implement OnModuleInit
-  // This mock only includes the public API methods that the service exposes
+  onModuleInit: jest.fn().mockResolvedValue(undefined),
 });
