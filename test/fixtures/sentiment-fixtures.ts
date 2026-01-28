@@ -208,6 +208,7 @@ export interface ExpectedSentimentResult {
 
 /**
  * Get expected result for a sentiment category
+ * Uses -1 to +1 scale aligned with SENTIMENT_TEST_CASES
  */
 export function getExpectedResult(
   category: 'positive' | 'negative' | 'neutral',
@@ -216,22 +217,22 @@ export function getExpectedResult(
     case 'positive':
       return {
         label: SentimentLabel.POSITIVE,
-        minScore: 0.6,
+        minScore: 0.4,
         maxScore: 1.0,
         minConfidence: 0.6,
       };
     case 'negative':
       return {
         label: SentimentLabel.NEGATIVE,
-        minScore: 0.0,
-        maxScore: 0.4,
+        minScore: -1.0,
+        maxScore: -0.4,
         minConfidence: 0.6,
       };
     case 'neutral':
       return {
         label: SentimentLabel.NEUTRAL,
-        minScore: 0.35,
-        maxScore: 0.65,
+        minScore: -0.2,
+        maxScore: 0.2,
         minConfidence: 0.3,
       };
   }
