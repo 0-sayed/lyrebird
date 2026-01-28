@@ -65,19 +65,17 @@ export class IngestionService implements OnModuleInit {
       return;
     }
 
-    // Start job processing in background (non-blocking)
-    // This allows the message handler to complete immediately,
-    // freeing the consumer to process other messages (like job.cancel)
-    this.processJobWithJetstream(message, correlationId);
+    // Start job processing - await to ensure errors are caught by controller
+    await this.processJobWithJetstream(message, correlationId);
   }
 
   /**
    * Process job using Jetstream real-time streaming
    */
-  private processJobWithJetstream(
+  private async processJobWithJetstream(
     message: StartJobMessage,
     correlationId: string,
-  ): void {
+  ): Promise<void> {
     const startTime = Date.now();
 
     this.logger.log(
@@ -114,11 +112,9 @@ export class IngestionService implements OnModuleInit {
       );
     }
 
-    // Register job with Jetstream manager - NON-BLOCKING
-    // The job runs in the background, allowing the message handler to complete
-    // and process other messages (like job.cancel) while the job is running.
-    this.jetstreamManager
-      .registerJob({
+    // Register job with Jetstream manager
+    try {
+      await this.jetstreamManager.registerJob({
         jobId: message.jobId,
         prompt: message.prompt,
         correlationId,
@@ -164,20 +160,21 @@ export class IngestionService implements OnModuleInit {
             );
           }
         },
-      })
-      .catch((error) => {
-        this.logger.error(
-          `[${correlationId}] Failed to register job with Jetstream`,
-          error instanceof Error ? error.stack : String(error),
-        );
-        this.rabbitmqService.emit(MESSAGE_PATTERNS.JOB_FAILED, {
-          jobId: message.jobId,
-          status: JobStatus.FAILED,
-          errorMessage:
-            error instanceof Error ? error.message : 'Job registration failed',
-          failedAt: new Date(),
-        } satisfies JobFailedMessage);
       });
+    } catch (error) {
+      this.logger.error(
+        `[${correlationId}] Failed to register job with Jetstream`,
+        error instanceof Error ? error.stack : String(error),
+      );
+      this.rabbitmqService.emit(MESSAGE_PATTERNS.JOB_FAILED, {
+        jobId: message.jobId,
+        status: JobStatus.FAILED,
+        errorMessage:
+          error instanceof Error ? error.message : 'Job registration failed',
+        failedAt: new Date(),
+      } satisfies JobFailedMessage);
+      throw error; // Re-throw to propagate to controller
+    }
   }
 
   /**
