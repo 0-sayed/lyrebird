@@ -8,292 +8,356 @@ import {
   RawDataMessage,
 } from '@app/shared-types';
 import type { RmqContext } from '@nestjs/microservices';
-import type { Message } from 'amqplib';
+import {
+  createMockRabbitMqContext,
+  assertMessageAcked,
+  assertMessageNacked,
+  type MockRabbitMqContext,
+} from '@app/testing';
+import {
+  createMockRawDataMessage,
+  createMockIngestionCompleteMessage,
+  resetMessageCounter,
+} from '../../../test/fixtures';
+
+/**
+ * Creates a mock AnalysisService for testing
+ */
+function createMockAnalysisService() {
+  return {
+    processRawData: jest.fn().mockResolvedValue(undefined),
+    handleIngestionComplete: jest.fn().mockResolvedValue(undefined),
+  };
+}
 
 describe('AnalysisController', () => {
-  let analysisController: AnalysisController;
-  let mockAnalysisService: {
-    processRawData: jest.Mock;
-    handleIngestionComplete: jest.Mock;
-  };
-  let mockChannel: {
-    ack: jest.Mock;
-    nack: jest.Mock;
-  };
-  let mockMessage: Message;
-  let mockContext: RmqContext;
+  let controller: AnalysisController;
+  let mockService: ReturnType<typeof createMockAnalysisService>;
+  let ctx: MockRabbitMqContext;
 
   beforeEach(async () => {
-    mockAnalysisService = {
-      processRawData: jest.fn(),
-      handleIngestionComplete: jest.fn(),
-    };
-
-    mockChannel = {
-      ack: jest.fn(),
-      nack: jest.fn(),
-    };
-
-    mockMessage = {
-      properties: { correlationId: 'test-correlation-id' },
-    } as unknown as Message;
-
-    mockContext = {
-      getChannelRef: jest.fn().mockReturnValue(mockChannel),
-      getMessage: jest.fn().mockReturnValue(mockMessage),
-    } as unknown as RmqContext;
+    resetMessageCounter();
+    mockService = createMockAnalysisService();
 
     const app: TestingModule = await Test.createTestingModule({
       controllers: [AnalysisController],
       providers: [
         {
           provide: AnalysisService,
-          useValue: mockAnalysisService,
+          useValue: mockService,
         },
       ],
     }).compile();
 
-    analysisController = app.get<AnalysisController>(AnalysisController);
-  });
-
-  describe('controller', () => {
-    it('should be defined', () => {
-      expect(analysisController).toBeDefined();
-    });
-
-    it('should have handleIngestionComplete method', () => {
-      expect(typeof analysisController.handleIngestionComplete).toBe(
-        'function',
-      );
-    });
+    controller = app.get<AnalysisController>(AnalysisController);
+    ctx = createMockRabbitMqContext();
   });
 
   describe('handleIngestionComplete', () => {
-    const validPayload: IngestionCompleteMessage = {
-      jobId: 'test-job-123',
-      totalItems: 10,
-      completedAt: new Date(),
-    };
+    let validPayload: IngestionCompleteMessage;
 
-    it('should validate required fields and ack invalid messages', async () => {
-      const invalidPayload = {
-        jobId: '',
-        totalItems: undefined,
-        completedAt: new Date(),
-      } as unknown as IngestionCompleteMessage;
-
-      await analysisController.handleIngestionComplete(
-        invalidPayload,
-        mockContext,
-      );
-
-      expect(
-        mockAnalysisService.handleIngestionComplete,
-      ).not.toHaveBeenCalled();
-      expect(mockChannel.ack).toHaveBeenCalledWith(mockMessage);
+    beforeEach(() => {
+      validPayload = createMockIngestionCompleteMessage();
     });
 
-    it('should call service with correct parameters on valid message', async () => {
-      await analysisController.handleIngestionComplete(
-        validPayload,
-        mockContext,
+    describe('message validation', () => {
+      it.each([
+        ['empty jobId', { jobId: '', totalItems: 10 }],
+        ['undefined totalItems', { jobId: 'test-job', totalItems: undefined }],
+        ['null jobId', { jobId: null, totalItems: 10 }],
+      ] as const)(
+        'should ack and skip processing when %s',
+        async (_description, payload) => {
+          await controller.handleIngestionComplete(
+            payload as unknown as IngestionCompleteMessage,
+            ctx as unknown as RmqContext,
+          );
+
+          expect(mockService.handleIngestionComplete).not.toHaveBeenCalled();
+          assertMessageAcked(ctx);
+        },
       );
 
-      expect(mockAnalysisService.handleIngestionComplete).toHaveBeenCalledWith(
-        validPayload,
-        'test-correlation-id',
-      );
-      expect(mockChannel.ack).toHaveBeenCalledWith(mockMessage);
+      it('should process valid messages', async () => {
+        await controller.handleIngestionComplete(
+          validPayload,
+          ctx as unknown as RmqContext,
+        );
+
+        expect(mockService.handleIngestionComplete).toHaveBeenCalledWith(
+          validPayload,
+          expect.any(String),
+        );
+        assertMessageAcked(ctx);
+      });
     });
 
-    it('should acknowledge message after successful processing', async () => {
-      mockAnalysisService.handleIngestionComplete.mockResolvedValue(undefined);
+    describe('correlation ID extraction', () => {
+      it('should use correlationId from message properties when available', async () => {
+        const customCtx = createMockRabbitMqContext({
+          properties: { correlationId: 'custom-correlation-id' },
+        });
 
-      await analysisController.handleIngestionComplete(
-        validPayload,
-        mockContext,
-      );
+        await controller.handleIngestionComplete(
+          validPayload,
+          customCtx as unknown as RmqContext,
+        );
 
-      expect(mockChannel.ack).toHaveBeenCalledWith(mockMessage);
-      expect(mockChannel.nack).not.toHaveBeenCalled();
+        expect(mockService.handleIngestionComplete).toHaveBeenCalledWith(
+          validPayload,
+          'custom-correlation-id',
+        );
+      });
+
+      it('should fall back to jobId when correlationId not in message properties', async () => {
+        const ctxWithoutCorrelation = createMockRabbitMqContext({
+          properties: { correlationId: '' },
+        });
+        const payload = createMockIngestionCompleteMessage({
+          jobId: 'fallback-job-id',
+        });
+
+        await controller.handleIngestionComplete(
+          payload,
+          ctxWithoutCorrelation as unknown as RmqContext,
+        );
+
+        expect(mockService.handleIngestionComplete).toHaveBeenCalledWith(
+          payload,
+          'fallback-job-id',
+        );
+      });
     });
 
-    it('should use jobId as correlationId when correlationId not in message properties', async () => {
-      const messageWithoutCorrelationId = {
-        properties: {},
-      } as unknown as Message;
-      const contextWithoutCorrelationId = {
-        getChannelRef: jest.fn().mockReturnValue(mockChannel),
-        getMessage: jest.fn().mockReturnValue(messageWithoutCorrelationId),
-      } as unknown as RmqContext;
+    describe('error handling', () => {
+      it('should requeue message on TransientError', async () => {
+        mockService.handleIngestionComplete.mockRejectedValue(
+          new TransientError('Service temporarily unavailable'),
+        );
 
-      await analysisController.handleIngestionComplete(
-        validPayload,
-        contextWithoutCorrelationId,
-      );
+        await controller.handleIngestionComplete(
+          validPayload,
+          ctx as unknown as RmqContext,
+        );
 
-      expect(mockAnalysisService.handleIngestionComplete).toHaveBeenCalledWith(
-        validPayload,
-        'test-job-123', // Falls back to jobId
-      );
-    });
+        assertMessageNacked(ctx, true);
+        expect(ctx._channel.ack).not.toHaveBeenCalled();
+      });
 
-    it('should requeue message on TransientError', async () => {
-      mockAnalysisService.handleIngestionComplete.mockRejectedValue(
-        new TransientError('Service temporarily unavailable'),
-      );
+      it('should not requeue message on PermanentError', async () => {
+        mockService.handleIngestionComplete.mockRejectedValue(
+          new PermanentError('Invalid data format'),
+        );
 
-      await analysisController.handleIngestionComplete(
-        validPayload,
-        mockContext,
-      );
+        await controller.handleIngestionComplete(
+          validPayload,
+          ctx as unknown as RmqContext,
+        );
 
-      expect(mockChannel.nack).toHaveBeenCalledWith(mockMessage, false, true);
-      expect(mockChannel.ack).not.toHaveBeenCalled();
-    });
+        assertMessageNacked(ctx, false);
+        expect(ctx._channel.ack).not.toHaveBeenCalled();
+      });
 
-    it('should not requeue message on PermanentError', async () => {
-      mockAnalysisService.handleIngestionComplete.mockRejectedValue(
-        new PermanentError('Invalid data format'),
-      );
+      it('should requeue message on unknown Error types (fail-safe)', async () => {
+        mockService.handleIngestionComplete.mockRejectedValue(
+          new TypeError('Unexpected type error'),
+        );
 
-      await analysisController.handleIngestionComplete(
-        validPayload,
-        mockContext,
-      );
+        await controller.handleIngestionComplete(
+          validPayload,
+          ctx as unknown as RmqContext,
+        );
 
-      expect(mockChannel.nack).toHaveBeenCalledWith(mockMessage, false, false);
-      expect(mockChannel.ack).not.toHaveBeenCalled();
-    });
+        assertMessageNacked(ctx, true);
+      });
 
-    it('should requeue message on unknown errors (fail-safe)', async () => {
-      mockAnalysisService.handleIngestionComplete.mockRejectedValue(
-        new Error('Unknown error'),
-      );
+      it('should requeue message when non-Error value is thrown', async () => {
+        mockService.handleIngestionComplete.mockRejectedValue(
+          'String error message',
+        );
 
-      await analysisController.handleIngestionComplete(
-        validPayload,
-        mockContext,
-      );
+        await controller.handleIngestionComplete(
+          validPayload,
+          ctx as unknown as RmqContext,
+        );
 
-      expect(mockChannel.nack).toHaveBeenCalledWith(mockMessage, false, true);
+        assertMessageNacked(ctx, true);
+      });
     });
   });
 
   describe('handleRawData', () => {
-    const validRawDataPayload: RawDataMessage = {
-      jobId: 'test-job-456',
-      textContent: 'Sample text content for analysis',
-      source: 'test-source',
-      publishedAt: new Date(),
-      collectedAt: new Date(),
-    };
+    let validPayload: RawDataMessage;
 
-    it('should validate required fields and ack invalid messages', async () => {
-      const invalidPayload = {
-        jobId: '',
-        textContent: '',
-        source: 'test',
-        publishedAt: new Date(),
-        collectedAt: new Date(),
-      } as RawDataMessage;
-
-      await analysisController.handleRawData(invalidPayload, mockContext);
-
-      expect(mockAnalysisService.processRawData).not.toHaveBeenCalled();
-      expect(mockChannel.ack).toHaveBeenCalledWith(mockMessage);
+    beforeEach(() => {
+      validPayload = createMockRawDataMessage();
     });
 
-    it('should call service with correct parameters', async () => {
-      await analysisController.handleRawData(validRawDataPayload, mockContext);
+    describe('message validation', () => {
+      it.each([
+        ['empty jobId', { jobId: '', textContent: 'content' }],
+        ['empty textContent', { jobId: 'test-job', textContent: '' }],
+        ['null jobId', { jobId: null, textContent: 'content' }],
+        [
+          'undefined textContent',
+          { jobId: 'test-job', textContent: undefined },
+        ],
+      ] as const)(
+        'should ack and skip processing when %s',
+        async (_description, payload) => {
+          const fullPayload = {
+            ...payload,
+            source: 'bluesky',
+            publishedAt: new Date(),
+            collectedAt: new Date(),
+          } as unknown as RawDataMessage;
 
-      expect(mockAnalysisService.processRawData).toHaveBeenCalledWith(
-        validRawDataPayload,
-        'test-correlation-id',
+          await controller.handleRawData(
+            fullPayload,
+            ctx as unknown as RmqContext,
+          );
+
+          expect(mockService.processRawData).not.toHaveBeenCalled();
+          assertMessageAcked(ctx);
+        },
       );
+
+      it('should process valid messages', async () => {
+        await controller.handleRawData(
+          validPayload,
+          ctx as unknown as RmqContext,
+        );
+
+        expect(mockService.processRawData).toHaveBeenCalledWith(
+          validPayload,
+          expect.any(String),
+        );
+        assertMessageAcked(ctx);
+      });
     });
 
-    it('should requeue on TransientError', async () => {
-      mockAnalysisService.processRawData.mockRejectedValue(
-        new TransientError('Connection timeout'),
-      );
+    describe('correlation ID extraction', () => {
+      it('should use correlationId from message properties when available', async () => {
+        const customCtx = createMockRabbitMqContext({
+          properties: { correlationId: 'raw-data-correlation-id' },
+        });
 
-      await analysisController.handleRawData(validRawDataPayload, mockContext);
+        await controller.handleRawData(
+          validPayload,
+          customCtx as unknown as RmqContext,
+        );
 
-      expect(mockChannel.nack).toHaveBeenCalledWith(mockMessage, false, true);
+        expect(mockService.processRawData).toHaveBeenCalledWith(
+          validPayload,
+          'raw-data-correlation-id',
+        );
+      });
+
+      it('should fall back to jobId when correlationId is empty', async () => {
+        const ctxWithoutCorrelation = createMockRabbitMqContext({
+          properties: { correlationId: '' },
+        });
+        const payload = createMockRawDataMessage({ jobId: 'raw-data-job-id' });
+
+        await controller.handleRawData(
+          payload,
+          ctxWithoutCorrelation as unknown as RmqContext,
+        );
+
+        expect(mockService.processRawData).toHaveBeenCalledWith(
+          payload,
+          'raw-data-job-id',
+        );
+      });
     });
 
-    it('should not requeue on PermanentError', async () => {
-      mockAnalysisService.processRawData.mockRejectedValue(
-        new PermanentError('Validation failed: invalid date'),
-      );
+    describe('error handling', () => {
+      it('should requeue message on TransientError', async () => {
+        mockService.processRawData.mockRejectedValue(
+          new TransientError('Connection timeout'),
+        );
 
-      await analysisController.handleRawData(validRawDataPayload, mockContext);
+        await controller.handleRawData(
+          validPayload,
+          ctx as unknown as RmqContext,
+        );
 
-      expect(mockChannel.nack).toHaveBeenCalledWith(mockMessage, false, false);
+        assertMessageNacked(ctx, true);
+        expect(ctx._channel.ack).not.toHaveBeenCalled();
+      });
+
+      it('should not requeue message on PermanentError', async () => {
+        mockService.processRawData.mockRejectedValue(
+          new PermanentError('Validation failed: invalid date'),
+        );
+
+        await controller.handleRawData(
+          validPayload,
+          ctx as unknown as RmqContext,
+        );
+
+        assertMessageNacked(ctx, false);
+        expect(ctx._channel.ack).not.toHaveBeenCalled();
+      });
+
+      it('should requeue on unknown errors (fail-safe)', async () => {
+        mockService.processRawData.mockRejectedValue(
+          new Error('Database connection lost'),
+        );
+
+        await controller.handleRawData(
+          validPayload,
+          ctx as unknown as RmqContext,
+        );
+
+        assertMessageNacked(ctx, true);
+      });
     });
   });
 
-  describe('shouldRequeue (via error handling)', () => {
-    const validPayload: IngestionCompleteMessage = {
-      jobId: 'test-job-789',
-      totalItems: 5,
-      completedAt: new Date(),
-    };
+  describe('shouldRequeue behavior (via error classification)', () => {
+    const validPayload = createMockIngestionCompleteMessage();
 
-    it('should return true for TransientError', async () => {
-      mockAnalysisService.handleIngestionComplete.mockRejectedValue(
-        new TransientError('Temporary failure'),
-      );
+    it.each([
+      ['TransientError', new TransientError('Temporary failure'), true],
+      ['PermanentError', new PermanentError('Data validation failed'), false],
+      ['TypeError', new TypeError('Unexpected type'), true],
+      ['RangeError', new RangeError('Out of bounds'), true],
+      ['generic Error', new Error('Unknown error'), true],
+    ] as const)(
+      'should requeue=%s for %s',
+      async (_errorType, error, expectedRequeue) => {
+        mockService.handleIngestionComplete.mockRejectedValue(error);
 
-      await analysisController.handleIngestionComplete(
-        validPayload,
-        mockContext,
-      );
+        await controller.handleIngestionComplete(
+          validPayload,
+          ctx as unknown as RmqContext,
+        );
 
-      // nack with requeue=true
-      expect(mockChannel.nack).toHaveBeenCalledWith(mockMessage, false, true);
-    });
+        assertMessageNacked(ctx, expectedRequeue);
+      },
+    );
 
-    it('should return false for PermanentError', async () => {
-      mockAnalysisService.handleIngestionComplete.mockRejectedValue(
-        new PermanentError('Data validation failed'),
-      );
+    it('should handle non-Error thrown values with fail-safe requeue', async () => {
+      const nonErrorValues = [
+        'string error',
+        42,
+        null,
+        undefined,
+        { message: 'object error' },
+      ];
 
-      await analysisController.handleIngestionComplete(
-        validPayload,
-        mockContext,
-      );
+      for (const value of nonErrorValues) {
+        const freshCtx = createMockRabbitMqContext();
+        mockService.handleIngestionComplete.mockRejectedValue(value);
 
-      // nack with requeue=false
-      expect(mockChannel.nack).toHaveBeenCalledWith(mockMessage, false, false);
-    });
+        await controller.handleIngestionComplete(
+          validPayload,
+          freshCtx as unknown as RmqContext,
+        );
 
-    it('should return true for unknown Error types (fail-safe)', async () => {
-      mockAnalysisService.handleIngestionComplete.mockRejectedValue(
-        new TypeError('Unexpected type error'),
-      );
-
-      await analysisController.handleIngestionComplete(
-        validPayload,
-        mockContext,
-      );
-
-      // Unknown errors should be requeued for safety
-      expect(mockChannel.nack).toHaveBeenCalledWith(mockMessage, false, true);
-    });
-
-    it('should return true for non-Error thrown values', async () => {
-      mockAnalysisService.handleIngestionComplete.mockRejectedValue(
-        'String error message',
-      );
-
-      await analysisController.handleIngestionComplete(
-        validPayload,
-        mockContext,
-      );
-
-      expect(mockChannel.nack).toHaveBeenCalledWith(mockMessage, false, true);
+        assertMessageNacked(freshCtx, true);
+      }
     });
   });
 });
