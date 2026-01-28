@@ -25,7 +25,7 @@ import {
   JetstreamManagerService,
   JetstreamJobConfig,
 } from '@app/ingestion/jetstream/jetstream-manager.service';
-import { MESSAGE_PATTERNS, RawDataMessage } from '@app/shared-types';
+import { MESSAGE_PATTERNS, RawDataMessage, JobStatus } from '@app/shared-types';
 
 // Create mocks using shared utilities
 const mockJobsRepository = createMockJobsRepository();
@@ -97,10 +97,12 @@ describe('IngestionService E2E', () => {
   let app: INestApplication;
   let mockRmqService: ReturnType<typeof createMockRabbitmqService>;
   let mockJetstream: ReturnType<typeof createMockJetstreamManagerService>;
+  let mockJobsRepo: ReturnType<typeof createMockJobsRepository>;
 
   beforeEach(async () => {
     mockRmqService = createMockRabbitmqService();
     mockJetstream = createMockJetstreamManagerService();
+    mockJobsRepo = createMockJobsRepository();
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [ConfigModule.forRoot({ isGlobal: true })],
@@ -108,7 +110,7 @@ describe('IngestionService E2E', () => {
         IngestionService,
         { provide: RabbitmqService, useValue: mockRmqService },
         { provide: JetstreamManagerService, useValue: mockJetstream },
-        { provide: JobsRepository, useValue: mockJobsRepository },
+        { provide: JobsRepository, useValue: mockJobsRepo },
       ],
     }).compile();
 
@@ -128,6 +130,16 @@ describe('IngestionService E2E', () => {
         prompt: 'test search query',
         timestamp: new Date(),
       };
+
+      // Mock findById to return a job so processing continues
+      mockJobsRepo.findById.mockReturnValue({
+        id: 'test-job-123',
+        prompt: 'test search query',
+        status: JobStatus.PENDING,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        completedAt: null,
+      });
 
       // Mock the registerJob to immediately complete
       mockJetstream.registerJob.mockImplementation(
@@ -164,6 +176,16 @@ describe('IngestionService E2E', () => {
         publishedAt: new Date(),
         collectedAt: new Date(),
       };
+
+      // Mock findById to return a job so processing continues
+      mockJobsRepo.findById.mockReturnValue({
+        id: 'test-job-456',
+        prompt: 'sentiment test',
+        status: JobStatus.PENDING,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        completedAt: null,
+      });
 
       // Simulate Jetstream emitting data and then completing
       mockJetstream.registerJob.mockImplementation(
@@ -213,6 +235,16 @@ describe('IngestionService E2E', () => {
         },
       ];
 
+      // Mock findById to return a job so processing continues
+      mockJobsRepo.findById.mockReturnValue({
+        id: 'test-job-789',
+        prompt: 'batch test',
+        status: JobStatus.PENDING,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        completedAt: null,
+      });
+
       // Simulate Jetstream emitting multiple data items
       mockJetstream.registerJob.mockImplementation(
         async (config: JetstreamJobConfig) => {
@@ -259,6 +291,16 @@ describe('IngestionService E2E', () => {
         },
       };
 
+      // Mock findById to return a job so processing continues
+      mockJobsRepo.findById.mockReturnValue({
+        id: 'test-job-custom',
+        prompt: 'custom job test',
+        status: JobStatus.PENDING,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        completedAt: null,
+      });
+
       mockJetstream.registerJob.mockImplementation(
         (config: JetstreamJobConfig) => {
           config.onComplete(0);
@@ -277,29 +319,22 @@ describe('IngestionService E2E', () => {
   });
 
   describe('isJobActive', () => {
-    it('should return true when Jetstream has active jobs', () => {
-      mockJetstream.getStatus.mockReturnValue({
-        enabled: true,
-        isListening: true,
-        connectionStatus: 'connected',
-        activeJobCount: 2,
-        metrics: {},
-      });
+    it('should return true when job is registered with Jetstream', () => {
+      mockJetstream.isJobRegistered.mockReturnValue(true);
 
       expect(service.isJobActive('test-job-123')).toBe(true);
-      expect(mockJetstream.getStatus).toHaveBeenCalled();
+      expect(mockJetstream.isJobRegistered).toHaveBeenCalledWith(
+        'test-job-123',
+      );
     });
 
-    it('should return false when Jetstream has no active jobs', () => {
-      mockJetstream.getStatus.mockReturnValue({
-        enabled: true,
-        isListening: false,
-        connectionStatus: 'disconnected',
-        activeJobCount: 0,
-        metrics: {},
-      });
+    it('should return false when job is not registered with Jetstream', () => {
+      mockJetstream.isJobRegistered.mockReturnValue(false);
 
       expect(service.isJobActive('test-job-123')).toBe(false);
+      expect(mockJetstream.isJobRegistered).toHaveBeenCalledWith(
+        'test-job-123',
+      );
     });
   });
 
