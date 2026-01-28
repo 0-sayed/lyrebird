@@ -168,12 +168,13 @@ describe('KeywordFilterService', () => {
         },
       );
 
-      it('should match keywords containing accented characters', () => {
-        // Note: matching depends on how the regex handles accents
+      it('should match ASCII keywords in text with special characters nearby', () => {
+        // Note: Accented character matching (café vs cafe) is not currently supported
+        // This test verifies basic matching still works with nearby special chars
         jobRegistry.registerJob(createJobConfig({ prompt: 'cafe' }));
 
         const post = createMockJetstreamPostEvent({
-          text: 'I went to the cafe today',
+          text: 'I went to the café cafe today!',
         });
         const matches = service.matchPost(post);
 
@@ -184,7 +185,7 @@ describe('KeywordFilterService', () => {
         jobRegistry.registerJob(createJobConfig({ prompt: 'coin' }));
 
         const post = createMockJetstreamPostEvent({
-          text: 'I love cryptocurrency!', // contains "coin" but not as a word
+          text: 'I love altcoin and bitcoin!', // contains "coin" as suffix, not standalone word
         });
         const matches = service.matchPost(post);
 
