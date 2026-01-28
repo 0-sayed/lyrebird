@@ -28,8 +28,8 @@ export class JobResponseDto {
   createdAt: Date;
 
   @ApiPropertyOptional({
-    description: 'Average sentiment score (0.0 - 1.0)',
-    example: 0.65,
+    description: 'Average sentiment score (-1.0 to +1.0)',
+    example: 0.35,
   })
   averageSentiment?: number;
 
