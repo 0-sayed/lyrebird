@@ -4,6 +4,8 @@ import { createMockRabbitmqService } from '../mocks/rabbitmq.mock';
 import { createMockDatabaseService } from '../mocks/database.mock';
 import { createMockJobsRepository } from '../mocks/repositories.mock';
 import { Logger, Type, Provider } from '@nestjs/common';
+import { RabbitmqService } from '@app/rabbitmq';
+import { DatabaseService, JobsRepository } from '@app/database';
 
 /**
  * Default mock providers commonly used across tests
@@ -124,6 +126,9 @@ export function createTestingModule(
     ? [
         { provide: ConfigService, useValue: mockConfigService },
         { provide: Logger, useValue: DEFAULT_MOCK_PROVIDERS.logger },
+        { provide: RabbitmqService, useValue: mockRabbitmq },
+        { provide: DatabaseService, useValue: mockDatabase },
+        { provide: JobsRepository, useValue: mockJobsRepository },
       ]
     : [];
 
