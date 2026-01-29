@@ -35,7 +35,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [gateway, ingestion, analysis]
+        service: [gateway, ingestion, analysis, dashboard]
         include:
           - service: gateway
             dockerfile: apps/gateway/Dockerfile
@@ -45,6 +45,9 @@ jobs:
             context: .
           - service: analysis
             dockerfile: apps/analysis/Dockerfile
+            context: .
+          - service: dashboard
+            dockerfile: apps/dashboard/Dockerfile
             context: .
 
     steps:
@@ -158,13 +161,18 @@ jobs:
           docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-analysis:sha-${{ github.sha }}
           docker image inspect ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-analysis:sha-${{ github.sha }}
 
+      - name: Pull and verify dashboard image
+        run: |
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-dashboard:sha-${{ github.sha }}
+          docker image inspect ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-dashboard:sha-${{ github.sha }}
+
       - name: Check image sizes
         run: |
           echo "### Image Sizes" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Service | Size |" >> $GITHUB_STEP_SUMMARY
           echo "|---------|------|" >> $GITHUB_STEP_SUMMARY
-          for service in gateway ingestion analysis; do
+          for service in gateway ingestion analysis dashboard; do
             size=$(docker image inspect ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${service}:sha-${{ github.sha }} --format '{{.Size}}' | numfmt --to=iec)
             echo "| ${service} | ${size} |" >> $GITHUB_STEP_SUMMARY
           done
