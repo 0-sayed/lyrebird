@@ -16,6 +16,9 @@ if [ -n "$VITE_API_URL" ] && [ "$VITE_API_URL" != "/api" ]; then
         exit 1
     fi
 
+    # Strip trailing slash to prevent double slashes in URLs (e.g., https://api.example.com/ -> https://api.example.com)
+    VITE_API_URL="${VITE_API_URL%/}"
+
     echo "Replacing API URL with: $VITE_API_URL"
     # Find and replace in all JS files (match /api followed by / or " to avoid partial matches)
     find /usr/share/nginx/html/assets -name '*.js' -exec sed -i "s|/api/|$VITE_API_URL/|g; s|/api\"|$VITE_API_URL\"|g" {} \;
