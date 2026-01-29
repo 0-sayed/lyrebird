@@ -41,44 +41,79 @@ services:
       - '-c'
       - |
         cat > /docker-entrypoint-initdb.d/init.sql << 'EOSQL'
+        -- ============================================================
+        -- Lyrebird Database Schema
+        -- Must match libs/database/migrations exactly!
+        -- ============================================================
+
         -- Enable TimescaleDB extension
         CREATE EXTENSION IF NOT EXISTS timescaledb;
 
-        -- Create sentiment_data table
-        CREATE TABLE IF NOT EXISTS sentiment_data (
-            id SERIAL,
-            job_id VARCHAR(255) NOT NULL,
-            source VARCHAR(50) NOT NULL,
-            text TEXT NOT NULL,
-            sentiment_score REAL NOT NULL,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            PRIMARY KEY (id, created_at)
+        -- Create jobs table (required for foreign key)
+        CREATE TABLE IF NOT EXISTS "jobs" (
+            "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+            "prompt" text NOT NULL,
+            "search_strategy" jsonb,
+            "status" text DEFAULT 'pending' NOT NULL,
+            "error_message" text,
+            "created_at" timestamp DEFAULT now() NOT NULL,
+            "updated_at" timestamp DEFAULT now() NOT NULL,
+            "completed_at" timestamp
         );
 
-        -- Convert to hypertable for time-series optimization
-        SELECT create_hypertable('sentiment_data', 'created_at', if_not_exists => TRUE);
+        -- Create sentiment_data table with full schema
+        CREATE TABLE IF NOT EXISTS "sentiment_data" (
+            "id" uuid DEFAULT gen_random_uuid() NOT NULL,
+            "job_id" uuid NOT NULL,
+            "source" text NOT NULL,
+            "source_url" text,
+            "author_name" text,
+            "text_content" text NOT NULL,
+            "raw_content" text,
+            "sentiment_score" real NOT NULL,
+            "sentiment_label" text NOT NULL,
+            "confidence" real,
+            "upvotes" integer DEFAULT 0,
+            "comment_count" integer DEFAULT 0,
+            "published_at" timestamp NOT NULL,
+            "collected_at" timestamp DEFAULT now() NOT NULL,
+            "analyzed_at" timestamp DEFAULT now() NOT NULL,
+            CONSTRAINT "sentiment_data_id_published_at_pk" PRIMARY KEY("id","published_at")
+        );
 
-        -- Create indexes for common queries
-        CREATE INDEX IF NOT EXISTS idx_sentiment_job_id ON sentiment_data(job_id);
-        CREATE INDEX IF NOT EXISTS idx_sentiment_created_at ON sentiment_data(created_at DESC);
+        -- Add foreign key constraint
+        ALTER TABLE "sentiment_data" ADD CONSTRAINT "sentiment_data_job_id_jobs_id_fk"
+            FOREIGN KEY ("job_id") REFERENCES "public"."jobs"("id") ON DELETE cascade ON UPDATE no action;
 
-        -- Create a view for quick stats
-        CREATE OR REPLACE VIEW sentiment_summary AS
-        SELECT
-            DATE_TRUNC('day', created_at) AS day,
-            COUNT(*) AS total_records,
-            AVG(sentiment_score) AS avg_sentiment,
-            MIN(sentiment_score) AS min_sentiment,
-            MAX(sentiment_score) AS max_sentiment
-        FROM sentiment_data
-        GROUP BY day
-        ORDER BY day DESC;
+        -- Convert to hypertable partitioned by published_at (7-day chunks)
+        SELECT create_hypertable(
+            'sentiment_data',
+            'published_at',
+            chunk_time_interval => INTERVAL '7 days',
+            if_not_exists => TRUE
+        );
 
-        -- Log successful initialization
-        DO $$
-        BEGIN
-            RAISE NOTICE 'Lyrebird database initialized successfully!';
-        END $$;
+        -- CRITICAL: Unique index required for ON CONFLICT deduplication
+        -- TimescaleDB requires unique indexes to include the partitioning column
+        CREATE UNIQUE INDEX IF NOT EXISTS sentiment_data_job_id_source_url_idx
+            ON sentiment_data (job_id, source_url, published_at);
+
+        -- Additional indexes for query performance
+        CREATE INDEX IF NOT EXISTS sentiment_data_job_id_idx ON sentiment_data (job_id);
+        CREATE INDEX IF NOT EXISTS sentiment_data_source_idx ON sentiment_data (source);
+        CREATE INDEX IF NOT EXISTS sentiment_data_published_at_idx ON sentiment_data (published_at DESC);
+        CREATE INDEX IF NOT EXISTS sentiment_data_collected_at_idx ON sentiment_data (collected_at DESC);
+        CREATE INDEX IF NOT EXISTS sentiment_data_sentiment_score_idx ON sentiment_data (sentiment_score);
+
+        -- Set up 90-day retention policy
+        SELECT add_retention_policy(
+            'sentiment_data',
+            INTERVAL '90 days',
+            if_not_exists => TRUE
+        );
+
+        -- Schema initialization complete
+        -- All tables, indexes, and hypertable configured
         EOSQL
         exec docker-entrypoint.sh postgres
 
@@ -111,7 +146,11 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ['CMD-SHELL', 'redis-cli -a "${REDIS_PASSWORD:-lyrebird_secure_password}" ping | grep -q PONG']
+      test:
+        [
+          'CMD-SHELL',
+          'redis-cli -a "${REDIS_PASSWORD:-lyrebird_secure_password}" ping | grep -q PONG',
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
