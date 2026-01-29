@@ -1,0 +1,276 @@
+# ========================================
+# Lyrebird Standalone Docker Compose
+# ========================================
+# Self-contained deployment - no repo clone needed!
+#
+# Usage:
+#   curl -O https://raw.githubusercontent.com/0-sayed/lyrebird/main/docker-compose.standalone.yml
+#   docker compose -f docker-compose.standalone.yml up -d
+#
+# Optional customization with .env file:
+#   echo "DASHBOARD_PORT=8080" > .env
+#   docker compose -f docker-compose.standalone.yml up -d
+
+services:
+  # ========================================
+  # Infrastructure Services
+  # ========================================
+
+  # PostgreSQL with TimescaleDB Extension
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    container_name: lyrebird-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DATABASE_USER:-postgres}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-lyrebird_secure_password}
+      POSTGRES_DB: ${DATABASE_NAME:-lyrebird}
+      POSTGRES_INITDB_ARGS: '-A md5'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lyrebird-network
+    # Database initialization via heredoc (no external file needed)
+    configs:
+      - source: init_db
+        target: /docker-entrypoint-initdb.d/init.sql
+
+  # RabbitMQ Message Broker
+  rabbitmq:
+    image: rabbitmq:4.0-management-alpine
+    container_name: lyrebird-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-rabbitmq}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-lyrebird_secure_password}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-/}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ['CMD-SHELL', 'rabbitmq-diagnostics -q check_port_listener 5672']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - lyrebird-network
+
+  # Redis Cache
+  redis:
+    image: redis:7.4-alpine
+    container_name: lyrebird-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-lyrebird_secure_password}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli -a "${REDIS_PASSWORD:-lyrebird_secure_password}" ping | grep -q PONG']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lyrebird-network
+
+  # ========================================
+  # Application Services (from GHCR)
+  # ========================================
+
+  # Gateway Service
+  gateway:
+    image: ghcr.io/0-sayed/lyrebird-gateway:${LYREBIRD_VERSION:-latest}
+    container_name: lyrebird-gateway
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_USER: ${DATABASE_USER:-postgres}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-lyrebird_secure_password}
+      DATABASE_NAME: ${DATABASE_NAME:-lyrebird}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER:-rabbitmq}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-lyrebird_secure_password}
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST:-/}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1',
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    networks:
+      - lyrebird-network
+
+  # Ingestion Service
+  ingestion:
+    image: ghcr.io/0-sayed/lyrebird-ingestion:${LYREBIRD_VERSION:-latest}
+    container_name: lyrebird-ingestion
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_USER: ${DATABASE_USER:-postgres}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-lyrebird_secure_password}
+      DATABASE_NAME: ${DATABASE_NAME:-lyrebird}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER:-rabbitmq}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-lyrebird_secure_password}
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST:-/}
+      JETSTREAM_MAX_DURATION_MS: ${JETSTREAM_MAX_DURATION_MS:-120000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'wget --no-verbose --tries=1 --spider http://localhost:3001/health || exit 1',
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    networks:
+      - lyrebird-network
+
+  # Analysis Service
+  analysis:
+    image: ghcr.io/0-sayed/lyrebird-analysis:${LYREBIRD_VERSION:-latest}
+    container_name: lyrebird-analysis
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3002
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_USER: ${DATABASE_USER:-postgres}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-lyrebird_secure_password}
+      DATABASE_NAME: ${DATABASE_NAME:-lyrebird}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER:-rabbitmq}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-lyrebird_secure_password}
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST:-/}
+      ML_MODEL_CACHE_DIR: /app/models-cache
+      ML_QUANTIZATION: ${ML_QUANTIZATION:-q8}
+    volumes:
+      - models_cache:/app/models-cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'wget --no-verbose --tries=1 --spider http://localhost:3002/health || exit 1',
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    networks:
+      - lyrebird-network
+
+  # Dashboard Service
+  dashboard:
+    image: ghcr.io/0-sayed/lyrebird-dashboard:${LYREBIRD_VERSION:-latest}
+    container_name: lyrebird-dashboard
+    restart: unless-stopped
+    ports:
+      - '${DASHBOARD_PORT:-8080}:8080'
+    depends_on:
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'wget --no-verbose --tries=1 --spider http://127.0.0.1:8080/health || exit 1',
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+    networks:
+      - lyrebird-network
+
+# Named volumes for data persistence
+volumes:
+  postgres_data:
+    driver: local
+  rabbitmq_data:
+    driver: local
+  redis_data:
+    driver: local
+  models_cache:
+    driver: local
+
+# Custom network for service communication
+networks:
+  lyrebird-network:
+    driver: bridge
+
+# Embedded database initialization script
+configs:
+  init_db:
+    content: |
+      -- Enable TimescaleDB extension
+      CREATE EXTENSION IF NOT EXISTS timescaledb;
+
+      -- Create sentiment_data table
+      CREATE TABLE IF NOT EXISTS sentiment_data (
+          id SERIAL,
+          job_id VARCHAR(255) NOT NULL,
+          source VARCHAR(50) NOT NULL,
+          text TEXT NOT NULL,
+          sentiment_score REAL NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (id, created_at)
+      );
+
+      -- Convert to hypertable for time-series optimization
+      SELECT create_hypertable('sentiment_data', 'created_at', if_not_exists => TRUE);
+
+      -- Create indexes for common queries
+      CREATE INDEX IF NOT EXISTS idx_sentiment_job_id ON sentiment_data(job_id);
+      CREATE INDEX IF NOT EXISTS idx_sentiment_created_at ON sentiment_data(created_at DESC);
+
+      -- Create a view for quick stats
+      CREATE OR REPLACE VIEW sentiment_summary AS
+      SELECT
+          DATE_TRUNC('day', created_at) AS day,
+          COUNT(*) AS total_records,
+          AVG(sentiment_score) AS avg_sentiment,
+          MIN(sentiment_score) AS min_sentiment,
+          MAX(sentiment_score) AS max_sentiment
+      FROM sentiment_data
+      GROUP BY day
+      ORDER BY day DESC;
+
+      -- Log successful initialization
+      DO $$
+      BEGIN
+          RAISE NOTICE 'Lyrebird database initialized successfully!';
+      END $$;
