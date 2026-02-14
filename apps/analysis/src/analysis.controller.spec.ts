@@ -347,8 +347,11 @@ describe('AnalysisController', () => {
         { message: 'object error' },
       ];
 
-      for (const value of nonErrorValues) {
-        const freshCtx = createMockRabbitMqContext();
+      for (const [index, value] of nonErrorValues.entries()) {
+        // Each iteration needs a unique message to avoid retry count collision
+        const freshCtx = createMockRabbitMqContext({
+          message: { iteration: index },
+        });
         mockService.handleIngestionComplete.mockRejectedValue(value);
 
         await controller.handleIngestionComplete(
