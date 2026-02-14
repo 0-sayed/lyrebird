@@ -1,6 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
-import { Logger } from '@nestjs/common';
+import { Logger } from 'nestjs-pino';
 import { IngestionModule } from './ingestion.module';
 import {
   RABBITMQ_CONSTANTS,
@@ -9,8 +9,6 @@ import {
 } from '@app/rabbitmq/rabbitmq.constants';
 
 async function bootstrap() {
-  const logger = new Logger('IngestionBootstrap');
-
   // HTTP port for health checks
   const httpPort = process.env.INGESTION_PORT || 3001;
 
@@ -18,10 +16,15 @@ async function bootstrap() {
   const rabbitmqUrl = buildRabbitMqUrl();
   const queue = RABBITMQ_CONSTANTS.QUEUES.INGESTION;
 
-  logger.log(`RabbitMQ: ${getSanitizedRabbitMqUrl(rabbitmqUrl)}`);
-
   // Create hybrid application (HTTP + Microservice)
-  const app = await NestFactory.create(IngestionModule);
+  // bufferLogs ensures logs during bootstrap are captured
+  const app = await NestFactory.create(IngestionModule, { bufferLogs: true });
+
+  // Use Pino logger for all NestJS logging
+  const logger = app.get(Logger);
+  app.useLogger(logger);
+
+  logger.log(`RabbitMQ: ${getSanitizedRabbitMqUrl(rabbitmqUrl)}`);
 
   // Connect microservice transport (RabbitMQ)
   app.connectMicroservice<MicroserviceOptions>({
@@ -48,11 +51,11 @@ async function bootstrap() {
   logger.log(`Listening for RabbitMQ messages on queue: ${queue}`);
 }
 
-bootstrap().catch((error) => {
-  const logger = new Logger('IngestionBootstrap');
-  logger.error(
-    'Failed to start Ingestion service',
-    error instanceof Error ? error.stack : String(error),
+bootstrap().catch((err) => {
+  // Use console.error for bootstrap failures since the app may not be initialized
+  console.error(
+    'Failed to start Ingestion service:',
+    err instanceof Error ? err.stack : String(err),
   );
   process.exit(1);
 });

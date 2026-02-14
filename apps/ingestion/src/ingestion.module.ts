@@ -2,7 +2,8 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { IngestionController } from './ingestion.controller';
 import { IngestionService } from './ingestion.service';
-import { DatabaseModule } from '@app/database/database.module';
+import { DatabaseModule } from '@app/database';
+import { LoggerModule } from '@app/logger';
 import { RabbitmqModule } from '@app/rabbitmq';
 import { HealthModule } from './health/health.module';
 import { JetstreamModule } from './jetstream/jetstream.module';
@@ -21,6 +22,7 @@ import { JetstreamModule } from './jetstream/jetstream.module';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     DatabaseModule,
+    LoggerModule,
     RabbitmqModule,
     HealthModule,
     JetstreamModule,
