@@ -1,6 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
-import { Logger } from '@nestjs/common';
+import { Logger } from 'nestjs-pino';
 import { AnalysisModule } from './analysis.module';
 import {
   RABBITMQ_CONSTANTS,
@@ -9,8 +9,6 @@ import {
 } from '@app/rabbitmq/rabbitmq.constants';
 
 async function bootstrap() {
-  const logger = new Logger('AnalysisBootstrap');
-
   // HTTP port for health checks
   const httpPort = process.env.ANALYSIS_PORT || 3002;
 
@@ -24,13 +22,18 @@ async function bootstrap() {
     parseInt(process.env.ANALYSIS_PREFETCH_COUNT ?? '', 10) ||
     RABBITMQ_CONSTANTS.ANALYSIS.DEFAULT_PREFETCH_COUNT;
 
+  // Create hybrid application (HTTP + Microservice)
+  // bufferLogs ensures logs during bootstrap are captured
+  const app = await NestFactory.create(AnalysisModule, { bufferLogs: true });
+
+  // Use Pino logger for all NestJS logging
+  const logger = app.get(Logger);
+  app.useLogger(logger);
+
   logger.log(`RabbitMQ: ${getSanitizedRabbitMqUrl(rabbitmqUrl)}`);
   logger.log(
     `Prefetch count: ${prefetchCount} (concurrent message processing)`,
   );
-
-  // Create hybrid application (HTTP + Microservice)
-  const app = await NestFactory.create(AnalysisModule);
 
   // Connect microservice transport (RabbitMQ)
   app.connectMicroservice<MicroserviceOptions>({
@@ -58,9 +61,9 @@ async function bootstrap() {
 }
 
 bootstrap().catch((err) => {
-  const logger = new Logger('AnalysisBootstrap');
-  logger.error(
-    'Failed to start Analysis service',
+  // Use console.error for bootstrap failures since the app may not be initialized
+  console.error(
+    'Failed to start Analysis service:',
     err instanceof Error ? err.stack : String(err),
   );
   process.exit(1);
