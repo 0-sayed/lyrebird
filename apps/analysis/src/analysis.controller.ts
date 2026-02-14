@@ -7,18 +7,18 @@ import {
 } from '@nestjs/microservices';
 import type { Channel, Message } from 'amqplib';
 import { AnalysisService } from './analysis.service';
-import {
-  MESSAGE_PATTERNS,
-  TransientError,
-  PermanentError,
-} from '@app/shared-types';
+import { MESSAGE_PATTERNS, PermanentError } from '@app/shared-types';
 import type {
   RawDataMessage,
   IngestionCompleteMessage,
 } from '@app/shared-types';
 
+import { createHash } from 'crypto';
+
 /** Max retry attempts before discarding a message */
 const MAX_RETRY_COUNT = 3;
+/** Max entries in retry tracking map before cleanup triggers */
+const RETRY_MAP_MAX_SIZE = 10_000;
 
 @Controller()
 export class AnalysisController {
@@ -77,6 +77,7 @@ export class AnalysisController {
 
       // Acknowledge successful processing
       channel.ack(originalMsg);
+      this.retryCountMap.delete(this.getMessageKey(originalMsg));
       this.logger.log(`[${correlationId}] Message acknowledged successfully`);
     } catch (error) {
       this.logger.error(
@@ -140,6 +141,7 @@ export class AnalysisController {
       await this.analysisService.handleIngestionComplete(data, correlationId);
 
       channel.ack(originalMsg);
+      this.retryCountMap.delete(this.getMessageKey(originalMsg));
       this.logger.log(`[${correlationId}] Message acknowledged successfully`);
     } catch (error) {
       this.logger.error(
@@ -163,16 +165,8 @@ export class AnalysisController {
    * Uses message content to identify unique messages across redeliveries.
    */
   private getMessageKey(originalMsg: Message): string {
-    // Use the raw message content as identifier since RabbitMQ doesn't
-    // provide a persistent delivery count for classic queues
     const content = originalMsg.content.toString();
-    // Simple hash to avoid storing large message bodies as keys
-    let hash = 0;
-    for (let i = 0; i < content.length; i++) {
-      const char = content.charCodeAt(i);
-      hash = ((hash << 5) - hash + char) | 0;
-    }
-    return String(hash);
+    return createHash('sha1').update(content).digest('hex');
   }
 
   /**
@@ -203,7 +197,7 @@ export class AnalysisController {
     this.retryCountMap.set(msgKey, currentRetries + 1);
 
     // Clean up old entries periodically to prevent memory leak
-    if (this.retryCountMap.size > 10_000) {
+    if (this.retryCountMap.size > RETRY_MAP_MAX_SIZE) {
       const entries = [...this.retryCountMap.entries()];
       // Remove oldest half
       for (let i = 0; i < entries.length / 2; i++) {
