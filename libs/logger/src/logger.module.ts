@@ -109,8 +109,12 @@ function createLoggerConfig(configService: ConfigService): Params {
        *
        * @see apps/gateway/src/interceptors/correlation-id.interceptor.ts
        */
-      genReqId: (req) =>
-        req.headers[CORRELATION_ID_HEADER]?.toString() || crypto.randomUUID(),
+      genReqId: (req) => {
+        const header = req.headers[CORRELATION_ID_HEADER];
+        return (
+          (Array.isArray(header) ? header[0] : header) || crypto.randomUUID()
+        );
+      },
 
       // Attach correlation ID to all logs
       customProps: (req) => ({
@@ -119,11 +123,11 @@ function createLoggerConfig(configService: ConfigService): Params {
 
       // Only log essential request/response fields — no headers, cookies, etc.
       serializers: {
-        req: (req) => ({
+        req: (req: { method: string; url: string }) => ({
           method: req.method,
           url: req.url,
         }),
-        res: (res) => ({
+        res: (res: { statusCode: number }) => ({
           statusCode: res.statusCode,
         }),
       },
