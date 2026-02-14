@@ -8,6 +8,7 @@ import { JobEventsController } from './controllers/job-events.controller';
 import { JobSseController } from './controllers/job-sse.controller';
 import { JobEventsService } from './services/job-events.service';
 import { DatabaseModule } from '@app/database';
+import { LoggerModule } from '@app/logger';
 import { RabbitmqModule } from '@app/rabbitmq';
 import { HealthModule } from './health/health.module';
 import { HttpExceptionFilter } from './filters/http-exception.filter';
@@ -25,6 +26,7 @@ import { CorrelationIdInterceptor } from './interceptors/correlation-id.intercep
       ignoreErrors: false,
     }),
     DatabaseModule,
+    LoggerModule,
     RabbitmqModule,
     HealthModule,
   ],
