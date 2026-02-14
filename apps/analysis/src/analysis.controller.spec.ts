@@ -315,6 +315,85 @@ describe('AnalysisController', () => {
     });
   });
 
+  describe('retry exhaustion', () => {
+    const MAX_RETRY_COUNT = 3;
+
+    it('should discard message after MAX_RETRY_COUNT retries', async () => {
+      const payload = createMockIngestionCompleteMessage();
+      const stickyCtx = createMockRabbitMqContext();
+
+      mockService.handleIngestionComplete.mockRejectedValue(
+        new Error('transient failure'),
+      );
+
+      // First MAX_RETRY_COUNT attempts should requeue
+      for (let i = 0; i < MAX_RETRY_COUNT; i++) {
+        stickyCtx._channel.nack.mockClear();
+        await controller.handleIngestionComplete(
+          payload,
+          stickyCtx as unknown as RmqContext,
+        );
+        assertMessageNacked(stickyCtx, true);
+      }
+
+      // Next attempt should discard (exceeded max retries)
+      stickyCtx._channel.nack.mockClear();
+      await controller.handleIngestionComplete(
+        payload,
+        stickyCtx as unknown as RmqContext,
+      );
+      assertMessageNacked(stickyCtx, false);
+    });
+
+    it('should reset retry count after successful processing', async () => {
+      const payload = createMockIngestionCompleteMessage();
+      const stickyCtx = createMockRabbitMqContext();
+
+      // Fail twice
+      mockService.handleIngestionComplete.mockRejectedValue(
+        new Error('transient failure'),
+      );
+      for (let i = 0; i < 2; i++) {
+        stickyCtx._channel.nack.mockClear();
+        await controller.handleIngestionComplete(
+          payload,
+          stickyCtx as unknown as RmqContext,
+        );
+        assertMessageNacked(stickyCtx, true);
+      }
+
+      // Succeed — should ack and clear retry counter
+      mockService.handleIngestionComplete.mockResolvedValue(undefined);
+      stickyCtx._channel.ack.mockClear();
+      await controller.handleIngestionComplete(
+        payload,
+        stickyCtx as unknown as RmqContext,
+      );
+      assertMessageAcked(stickyCtx);
+
+      // Fail again MAX_RETRY_COUNT times — counter should be fresh
+      mockService.handleIngestionComplete.mockRejectedValue(
+        new Error('transient failure'),
+      );
+      for (let i = 0; i < MAX_RETRY_COUNT; i++) {
+        stickyCtx._channel.nack.mockClear();
+        await controller.handleIngestionComplete(
+          payload,
+          stickyCtx as unknown as RmqContext,
+        );
+        assertMessageNacked(stickyCtx, true);
+      }
+
+      // Should discard on the next attempt
+      stickyCtx._channel.nack.mockClear();
+      await controller.handleIngestionComplete(
+        payload,
+        stickyCtx as unknown as RmqContext,
+      );
+      assertMessageNacked(stickyCtx, false);
+    });
+  });
+
   describe('shouldRequeue behavior (via error classification)', () => {
     const validPayload = createMockIngestionCompleteMessage();
 
