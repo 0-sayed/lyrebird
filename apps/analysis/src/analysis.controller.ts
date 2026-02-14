@@ -17,9 +17,15 @@ import type {
   IngestionCompleteMessage,
 } from '@app/shared-types';
 
+/** Max retry attempts before discarding a message */
+const MAX_RETRY_COUNT = 3;
+
 @Controller()
 export class AnalysisController {
   private readonly logger = new Logger(AnalysisController.name);
+
+  /** Track per-message retry counts (keyed by message content hash) */
+  private readonly retryCountMap = new Map<string, number>();
 
   constructor(private readonly analysisService: AnalysisService) {}
 
@@ -79,9 +85,7 @@ export class AnalysisController {
       );
 
       // Determine if we should requeue
-      const shouldRequeue = this.shouldRequeue(error);
-
-      if (shouldRequeue) {
+      if (this.shouldRequeue(error, originalMsg)) {
         this.logger.warn(`[${correlationId}] Requeuing message for retry`);
         channel.nack(originalMsg, false, true);
       } else {
@@ -143,9 +147,8 @@ export class AnalysisController {
         error instanceof Error ? error.stack : String(error),
       );
 
-      // Requeue on transient errors
-      const shouldRequeue = this.shouldRequeue(error);
-      if (shouldRequeue) {
+      // Requeue on transient errors, respecting max retry count
+      if (this.shouldRequeue(error, originalMsg)) {
         this.logger.warn(`[${correlationId}] Requeuing message for retry`);
         channel.nack(originalMsg, false, true);
       } else {
@@ -156,24 +159,58 @@ export class AnalysisController {
   }
 
   /**
-   * Determine if an error is transient and should be retried
-   *
-   * Uses custom error classes (TransientError, PermanentError) for reliable
-   * retry decisions instead of fragile string matching on error messages.
+   * Get a stable key for tracking retries of a specific message.
+   * Uses message content to identify unique messages across redeliveries.
    */
-  private shouldRequeue(error: unknown): boolean {
-    // Explicit transient errors should always be retried
-    if (error instanceof TransientError) {
-      return true;
+  private getMessageKey(originalMsg: Message): string {
+    // Use the raw message content as identifier since RabbitMQ doesn't
+    // provide a persistent delivery count for classic queues
+    const content = originalMsg.content.toString();
+    // Simple hash to avoid storing large message bodies as keys
+    let hash = 0;
+    for (let i = 0; i < content.length; i++) {
+      const char = content.charCodeAt(i);
+      hash = ((hash << 5) - hash + char) | 0;
     }
+    return String(hash);
+  }
 
+  /**
+   * Determine if a failed message should be requeued for retry.
+   *
+   * Checks: error type, retry count, and redelivery status.
+   * Prevents infinite retry loops by enforcing MAX_RETRY_COUNT.
+   */
+  private shouldRequeue(error: unknown, originalMsg: Message): boolean {
     // Explicit permanent errors should never be retried
     if (error instanceof PermanentError) {
       return false;
     }
 
-    // Default: requeue unknown errors (fail-safe approach)
-    // This ensures we don't lose messages due to unexpected error types
+    // Check retry count to prevent infinite loops
+    const msgKey = this.getMessageKey(originalMsg);
+    const currentRetries = this.retryCountMap.get(msgKey) ?? 0;
+
+    if (currentRetries >= MAX_RETRY_COUNT) {
+      this.logger.error(
+        `Message exceeded max retry count (${MAX_RETRY_COUNT}), discarding`,
+      );
+      this.retryCountMap.delete(msgKey);
+      return false;
+    }
+
+    // Explicit transient errors or unknown errors: retry with count tracking
+    this.retryCountMap.set(msgKey, currentRetries + 1);
+
+    // Clean up old entries periodically to prevent memory leak
+    if (this.retryCountMap.size > 10_000) {
+      const entries = [...this.retryCountMap.entries()];
+      // Remove oldest half
+      for (let i = 0; i < entries.length / 2; i++) {
+        this.retryCountMap.delete(entries[i][0]);
+      }
+    }
+
     return true;
   }
 }
