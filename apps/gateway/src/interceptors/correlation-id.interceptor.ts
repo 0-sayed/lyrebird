@@ -21,7 +21,8 @@ export class CorrelationIdInterceptor implements NestInterceptor {
     // pino-http middleware already extracted the correlation ID from the
     // X-Correlation-ID header or generated a new UUID — reuse it so
     // logs, response headers, and downstream code all share one ID.
-    const correlationId = String(request.id ?? randomUUID());
+    const correlationId =
+      typeof request.id === 'string' ? request.id : randomUUID();
 
     // Add to request for downstream use
     request.correlationId = correlationId;
