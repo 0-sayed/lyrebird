@@ -1,35 +1,38 @@
 -- Enable TimescaleDB extension
 CREATE EXTENSION IF NOT EXISTS timescaledb;
 
--- Create sentiment_data table
+-- Create sentiment_data table (must match Drizzle schema in libs/database/src/schema/sentiment-data.schema.ts)
 CREATE TABLE IF NOT EXISTS sentiment_data (
-    id SERIAL,
-    job_id VARCHAR(255) NOT NULL,
-    source VARCHAR(50) NOT NULL,
-    text TEXT NOT NULL,
+    id UUID DEFAULT gen_random_uuid() NOT NULL,
+    job_id UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+    source TEXT NOT NULL,
+    source_url TEXT,
+    author_name TEXT,
+    text_content TEXT NOT NULL,
+    raw_content TEXT,
     sentiment_score REAL NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (id, created_at)
+    sentiment_label TEXT NOT NULL,
+    confidence REAL,
+    upvotes INTEGER DEFAULT 0,
+    comment_count INTEGER DEFAULT 0,
+    published_at TIMESTAMP NOT NULL,
+    collected_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    analyzed_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    CONSTRAINT sentiment_data_id_published_at_pk PRIMARY KEY (id, published_at)
 );
 
--- Convert to hypertable for time-series optimization
-SELECT create_hypertable('sentiment_data', 'created_at', if_not_exists => TRUE);
+-- Convert to hypertable for time-series optimization (partitioned by published_at)
+SELECT create_hypertable('sentiment_data', 'published_at', chunk_time_interval => INTERVAL '7 days', if_not_exists => TRUE);
 
 -- Create indexes for common queries
-CREATE INDEX IF NOT EXISTS idx_sentiment_job_id ON sentiment_data(job_id);
-CREATE INDEX IF NOT EXISTS idx_sentiment_created_at ON sentiment_data(created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS sentiment_data_job_id_source_url_idx ON sentiment_data(job_id, source_url, published_at);
+CREATE INDEX IF NOT EXISTS sentiment_data_source_idx ON sentiment_data(source);
+CREATE INDEX IF NOT EXISTS sentiment_data_published_at_idx ON sentiment_data(published_at DESC);
+CREATE INDEX IF NOT EXISTS sentiment_data_collected_at_idx ON sentiment_data(collected_at DESC);
+CREATE INDEX IF NOT EXISTS sentiment_data_sentiment_score_idx ON sentiment_data(sentiment_score);
 
--- Create a view for quick stats
-CREATE OR REPLACE VIEW sentiment_summary AS
-SELECT
-    DATE_TRUNC('day', created_at) AS day,
-    COUNT(*) AS total_records,
-    AVG(sentiment_score) AS avg_sentiment,
-    MIN(sentiment_score) AS min_sentiment,
-    MAX(sentiment_score) AS max_sentiment
-FROM sentiment_data
-GROUP BY day
-ORDER BY day DESC;
+-- Set up data retention policy (90 days)
+SELECT add_retention_policy('sentiment_data', INTERVAL '90 days', if_not_exists => TRUE);
 
 -- Log successful initialization
 DO $$
