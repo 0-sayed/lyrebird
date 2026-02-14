@@ -34,6 +34,8 @@
       "@app/bluesky/*": ["libs/bluesky/src/*"],
       "@app/testing": ["libs/testing/src"],
       "@app/testing/*": ["libs/testing/src/*"],
+      "@app/logger": ["libs/logger/src"],
+      "@app/logger/*": ["libs/logger/src/*"],
       "@app/gateway": ["apps/gateway/src"],
       "@app/gateway/*": ["apps/gateway/src/*"],
       "@app/analysis": ["apps/analysis/src"],
