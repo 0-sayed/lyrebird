@@ -33,19 +33,14 @@
         "@types/supertest",
         "supertest",
         "ts-loader",
-        "swagger-ui-express"
+        "swagger-ui-express",
+        "pino-pretty"
       ]
     },
     "apps/dashboard": {
-      "entry": [
-        "src/main.tsx",
-        "src/__tests__/mocks/**/*.ts"
-      ],
+      "entry": ["src/main.tsx", "src/__tests__/mocks/**/*.ts"],
       "project": ["src/**/*.ts", "src/**/*.tsx"],
-      "ignore": [
-        "**/*.test.ts",
-        "**/*.test.tsx"
-      ],
+      "ignore": ["**/*.test.ts", "**/*.test.tsx"],
       "vitest": {
         "entry": ["src/**/*.{test,spec}.{ts,tsx}", "src/__tests__/setup.ts"]
       },
