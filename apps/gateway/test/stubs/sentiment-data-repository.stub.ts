@@ -28,7 +28,7 @@ export class SentimentDataRepositoryStub implements Partial<SentimentDataReposit
     }
 
     const record: SentimentData = {
-      id: crypto.randomUUID(),
+      id: data.id ?? crypto.randomUUID(),
       jobId: data.jobId,
       source: data.source,
       sourceUrl: data.sourceUrl ?? null,
@@ -86,7 +86,9 @@ export class SentimentDataRepositoryStub implements Partial<SentimentDataReposit
       positive: 0,
     };
     for (const d of jobData) {
-      distribution[d.sentimentLabel]++;
+      if (d.sentimentLabel in distribution) {
+        distribution[d.sentimentLabel]++;
+      }
     }
     return Promise.resolve(
       Object.entries(distribution).map(([label, count]) => ({
@@ -112,7 +114,9 @@ export class SentimentDataRepositoryStub implements Partial<SentimentDataReposit
   }
 
   seed(records: SentimentData[]): void {
-    records.forEach((record) => this.data.set(record.id, record));
+    for (const record of records) {
+      this.data.set(record.id, record);
+    }
   }
 
   getAll(): SentimentData[] {

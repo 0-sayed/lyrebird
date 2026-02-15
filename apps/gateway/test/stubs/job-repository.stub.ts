@@ -58,7 +58,9 @@ export class JobRepositoryStub implements Partial<JobsRepository> {
   }
 
   seed(jobs: Job[]): void {
-    jobs.forEach((job) => this.jobs.set(job.id, job));
+    for (const job of jobs) {
+      this.jobs.set(job.id, job);
+    }
   }
 
   getAll(): Job[] {
