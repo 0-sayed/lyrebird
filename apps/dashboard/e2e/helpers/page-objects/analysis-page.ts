@@ -22,7 +22,9 @@ export class AnalysisPage {
     this.chart = page.getByTestId('sentiment-live-chart');
     this.chartCanvas = this.chart.locator('canvas');
     // Connection status has aria-label="Connection status: ..." to distinguish from other role="status" elements
-    this.connectionStatus = page.getByRole('status', { name: /Connection status/i });
+    this.connectionStatus = page.getByRole('status', {
+      name: /Connection status/i,
+    });
     this.postsSidebar = page.getByTestId('posts-sidebar');
     // Toggle button changes aria-label based on state
     this.postsSidebarToggle = page.getByRole('button', {
@@ -49,7 +51,7 @@ export class AnalysisPage {
    */
   async isConnected(): Promise<boolean> {
     const text = await this.connectionStatus.textContent();
-    return text?.toLowerCase().includes('connected') ?? false;
+    return text?.toLowerCase() === 'connected';
   }
 
   /**
