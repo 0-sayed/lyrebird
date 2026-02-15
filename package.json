@@ -160,7 +160,8 @@
       "!**/filters/**",
       "!**/interceptors/**",
       "!apps/gateway/src/controllers/job-events.controller.ts",
-      "!apps/gateway/src/services/job-events.service.ts"
+      "!apps/gateway/src/services/job-events.service.ts",
+      "!apps/gateway/src/controllers/test-control.controller.ts"
     ],
     "coverageDirectory": "./coverage",
     "coverageThreshold": {
