@@ -46,6 +46,7 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./apps/gateway/test/jest-e2e.json",
     "test:e2e:all": "jest --config ./apps/gateway/test/jest-e2e.json && jest --config ./apps/analysis/test/jest-e2e.json && jest --config ./apps/ingestion/test/jest-e2e.json",
+    "test:e2e:server": "NODE_ENV=test npx ts-node -r tsconfig-paths/register apps/gateway/test/e2e-server.ts",
     "test:ci": "jest --coverage --ci --maxWorkers=2",
     "validate": "pnpm lint && pnpm type-check && pnpm test && pnpm knip && pnpm build",
     "type-check": "tsc --noEmit && pnpm --filter dashboard type-check",

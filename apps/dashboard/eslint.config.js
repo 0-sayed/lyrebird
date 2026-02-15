@@ -43,4 +43,12 @@ export default tseslint.config(
       '@typescript-eslint/no-unsafe-argument': 'off',
     },
   },
+  // E2E tests - disable React hooks rules (Playwright's `use` isn't a React hook)
+  {
+    files: ['e2e/**/*.ts'],
+    rules: {
+      'react-hooks/rules-of-hooks': 'off',
+      'react-hooks/exhaustive-deps': 'off',
+    },
+  },
 );
