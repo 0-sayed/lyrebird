@@ -30,7 +30,7 @@ export default defineConfig(({ mode }) => {
       // Proxy API requests to gateway in development
       proxy: {
         '/api': {
-          target: 'http://localhost:3000',
+          target: `http://localhost:${env.VITE_API_PORT || '3000'}`,
           changeOrigin: true,
           secure: false,
         },
