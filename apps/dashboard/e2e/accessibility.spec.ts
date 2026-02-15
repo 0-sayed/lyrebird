@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { SidebarPage } from './helpers/page-objects/sidebar-page';
 
 test.describe('Accessibility', () => {
   // Skip sidebar-dependent tests on mobile viewports
@@ -73,11 +74,8 @@ test.describe('Accessibility', () => {
   test('color contrast should be sufficient in light mode', async ({
     page,
   }) => {
-    // Set light theme via settings menu
-    const settingsMenu = page.getByTestId('settings-menu');
-    await settingsMenu.click();
-    await page.getByTestId('theme-toggle').hover();
-    await page.getByRole('menuitem', { name: /light/i }).click();
+    const sidebar = new SidebarPage(page);
+    await sidebar.setTheme('light');
 
     // Text should be visible (this is a smoke test, not a full contrast check)
     await expect(
@@ -86,11 +84,8 @@ test.describe('Accessibility', () => {
   });
 
   test('color contrast should be sufficient in dark mode', async ({ page }) => {
-    // Set dark theme via settings menu
-    const settingsMenu = page.getByTestId('settings-menu');
-    await settingsMenu.click();
-    await page.getByTestId('theme-toggle').hover();
-    await page.getByRole('menuitem', { name: /dark/i }).click();
+    const sidebar = new SidebarPage(page);
+    await sidebar.setTheme('dark');
 
     // Text should be visible
     await expect(
