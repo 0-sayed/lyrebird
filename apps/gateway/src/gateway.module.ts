@@ -13,6 +13,13 @@ import { RabbitmqModule } from '@app/rabbitmq';
 import { HealthModule } from './health/health.module';
 import { HttpExceptionFilter } from './filters/http-exception.filter';
 import { CorrelationIdInterceptor } from './interceptors/correlation-id.interceptor';
+import { TestControlModule } from './controllers/test-control.module';
+
+/**
+ * Conditionally import TestControlModule only in test mode
+ * This allows Playwright E2E tests to trigger SSE events via HTTP endpoints
+ */
+const testModules = process.env.NODE_ENV === 'test' ? [TestControlModule] : [];
 
 @Module({
   imports: [
@@ -29,6 +36,7 @@ import { CorrelationIdInterceptor } from './interceptors/correlation-id.intercep
     LoggerModule,
     RabbitmqModule,
     HealthModule,
+    ...testModules,
   ],
   controllers: [GatewayController, JobEventsController, JobSseController],
   providers: [
