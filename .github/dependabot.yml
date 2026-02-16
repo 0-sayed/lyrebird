@@ -16,15 +16,12 @@ updates:
       - 'dependencies'
       - 'npm'
     commit-message:
-      prefix: 'deps(npm)'
+      prefix: 'chore'
+      include: 'scope'
     groups:
-      # Group minor and patch updates together
-      npm-minor-and-patch:
+      npm-all:
         patterns:
           - '*'
-        update-types:
-          - 'minor'
-          - 'patch'
 
   # Docker dependencies
   - package-ecosystem: 'docker'
@@ -39,7 +36,8 @@ updates:
       - 'dependencies'
       - 'docker'
     commit-message:
-      prefix: 'deps(docker)'
+      prefix: 'chore'
+      include: 'scope'
     groups:
       docker-dependencies:
         patterns:
@@ -59,7 +57,8 @@ updates:
       - 'github-actions'
       - 'security'
     commit-message:
-      prefix: 'deps(actions)'
+      prefix: 'ci'
+      include: 'scope'
     # Automatically rebase when base branch updates
     rebase-strategy: 'auto'
     groups:

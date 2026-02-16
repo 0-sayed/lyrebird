@@ -48,9 +48,9 @@ jobs:
             chore
             revert
           requireScope: false
-          subjectPattern: ^.{1,80}$
+          subjectPattern: ^.{1,120}$
           subjectPatternError: |
-            The subject must be between 1 and 80 characters.
+            The subject must be between 1 and 120 characters.
 
   # ========================================
   # Dependency Review
