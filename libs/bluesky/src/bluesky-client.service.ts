@@ -179,7 +179,9 @@ export class BlueskyClientService implements OnModuleInit {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error(`Bluesky authentication failed: ${message}`);
-      throw new Error(`Bluesky authentication failed: ${message}`);
+      throw new Error(`Bluesky authentication failed: ${message}`, {
+        cause: error,
+      });
     }
   }
 
@@ -285,12 +287,12 @@ export class BlueskyClientService implements OnModuleInit {
       if (error instanceof Error && error.name === 'TimeoutError') {
         const message = `Bluesky API request timed out after ${BlueskyClientService.API_TIMEOUT_MS}ms`;
         this.logger.error(message);
-        throw new Error(message);
+        throw new Error(message, { cause: error });
       }
 
       const message = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error(`Bluesky search failed: ${message}`);
-      throw new Error(`Bluesky search failed: ${message}`);
+      throw new Error(`Bluesky search failed: ${message}`, { cause: error });
     }
   }
 
