@@ -459,7 +459,6 @@ describe('BertSentimentService', () => {
 
       expect(result).toBeDefined();
       // Verify truncation happened - the text sent should be <= 503 chars (500 + "...")
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
       const calledWith = mockPipeline.mock.calls[0][0] as string;
       expect(calledWith.length).toBeLessThanOrEqual(503);
     });
