@@ -349,7 +349,6 @@ describe('KeywordFilterService', () => {
         expect(onData).toHaveBeenCalledWith(
           expect.objectContaining({
             publishedAt: createdAt,
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
             collectedAt: expect.any(Date),
           }),
         );
@@ -437,7 +436,6 @@ describe('KeywordFilterService', () => {
       });
       await service.processPost(post);
 
-      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(didResolver.resolveHandle).toHaveBeenCalledWith(
         'did:plc:needsresolution',
       );
@@ -458,7 +456,6 @@ describe('KeywordFilterService', () => {
       });
       await service.processPost(post);
 
-      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(didResolver.resolveHandle).not.toHaveBeenCalled();
       expect(onData).toHaveBeenCalledWith(
         expect.objectContaining({

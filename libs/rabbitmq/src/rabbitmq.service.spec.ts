@@ -22,7 +22,6 @@ function setupMockClients(
     mockClients;
 }
 
-/* eslint-disable @typescript-eslint/unbound-method */
 describe('RabbitmqService', () => {
   let service: RabbitmqService;
   let mockClients: Map<string, ClientProxy>;

@@ -15,7 +15,6 @@ export function createMockClientProxy(): jest.Mocked<ClientProxy> & {
     emit: jest.fn().mockImplementation(() => {
       const observable = of(undefined);
       const originalSubscribe = observable.subscribe.bind(observable);
-      /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access */
       (observable as any).subscribe = (
         ...args: Parameters<typeof originalSubscribe>
       ) => {
@@ -23,7 +22,6 @@ export function createMockClientProxy(): jest.Mocked<ClientProxy> & {
         subscriptions.push(sub);
         return sub;
       };
-      /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access */
       return observable;
     }),
     send: jest.fn().mockReturnValue(of({ success: true })),

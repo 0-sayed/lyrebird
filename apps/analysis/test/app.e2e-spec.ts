@@ -94,8 +94,7 @@ describe('AnalysisController (e2e)', () => {
   });
 
   it('/health/live (GET)', () => {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-    return request(app.getHttpServer())
+    return request(app.getHttpServer() as App)
       .get('/health/live')
       .expect(200)
       .expect((res) => {
@@ -105,23 +104,17 @@ describe('AnalysisController (e2e)', () => {
   });
 
   it('/health/ready (GET) - should return ready when dependencies are healthy', () => {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-    return request(app.getHttpServer())
+    return request(app.getHttpServer() as App)
       .get('/health/ready')
       .expect(200)
       .expect((res) => {
         expect(res.body).toHaveProperty('status', 'ready');
 
         expect(res.body).toHaveProperty('checks');
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         expect(res.body.checks).toHaveProperty('rabbitmq', 'connected');
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         expect(res.body.checks).toHaveProperty('database', 'connected');
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         expect(res.body.checks).toHaveProperty('bert');
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         expect(res.body.checks.bert).toHaveProperty('ready', true);
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         expect(res.body.checks.bert).toHaveProperty('provider', 'local-onnx');
       });
   });
