@@ -43,6 +43,27 @@ export default tseslint.config(
       '@typescript-eslint/no-unsafe-argument': 'off',
     },
   },
+  // Ban inline disable comments
+  {
+    linterOptions: {
+      noInlineConfig: true,
+      reportUnusedDisableDirectives: 'error',
+    },
+  },
+  // shadcn sidebar exports context + hooks + components (legitimate pattern)
+  {
+    files: ['src/components/ui/sidebar.tsx'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
+  // Test utilities export non-components; HMR irrelevant
+  {
+    files: ['src/__tests__/**/*'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
   // E2E tests - disable React hooks rules (Playwright's `use` isn't a React hook)
   {
     files: ['e2e/**/*.ts'],

@@ -41,4 +41,29 @@ export default tseslint.config(
       'prettier/prettier': ['error', { endOfLine: 'auto' }],
     },
   },
+  // Ban inline disable comments
+  {
+    linterOptions: {
+      noInlineConfig: true,
+      reportUnusedDisableDirectives: 'error',
+    },
+  },
+  // Relax strict type rules in test files (Jest assertions are inherently untyped)
+  {
+    files: ['**/*.spec.ts', '**/*.e2e-spec.ts', '**/test/**/*.ts'],
+    rules: {
+      '@typescript-eslint/unbound-method': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+    },
+  },
+  // Relax rules for mock/fixture files
+  {
+    files: ['**/mocks/**/*.ts', '**/fixtures/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+    },
+  },
 );
