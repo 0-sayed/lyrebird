@@ -88,6 +88,12 @@ export function SentimentLiveChart({
     return false;
   });
 
+  // Ref tracks isDarkMode for the chart init effect without triggering re-creation
+  const isDarkModeRef = React.useRef(isDarkMode);
+  React.useEffect(() => {
+    isDarkModeRef.current = isDarkMode;
+  }, [isDarkMode]);
+
   // Watch for theme changes
   React.useEffect(() => {
     const observer = new MutationObserver((mutations) => {
@@ -107,7 +113,7 @@ export function SentimentLiveChart({
     if (!chartContainerRef.current) return;
 
     const chart = createChart(chartContainerRef.current, {
-      ...getChartOptions(isDarkMode),
+      ...getChartOptions(isDarkModeRef.current),
       width: chartContainerRef.current.clientWidth,
       height,
     });
@@ -118,11 +124,14 @@ export function SentimentLiveChart({
     const sentimentSeries = createSentimentSeries(chart);
     sentimentSeriesRef.current = sentimentSeries;
 
-    const averageSeries = createAverageSeries(chart, isDarkMode);
+    const averageSeries = createAverageSeries(chart, isDarkModeRef.current);
     averageSeriesRef.current = averageSeries;
 
     // Create price lines for sentiment thresholds
-    priceLinesRef.current = createPriceLines(sentimentSeries, isDarkMode);
+    priceLinesRef.current = createPriceLines(
+      sentimentSeries,
+      isDarkModeRef.current,
+    );
 
     // Handle resize
     const handleResize = () => {
@@ -143,10 +152,8 @@ export function SentimentLiveChart({
       averageSeriesRef.current = null;
       priceLinesRef.current = null;
     };
-    // Note: We intentionally omit isDarkMode from deps to avoid recreating the chart on theme change.
-    // Theme changes are handled by a separate useEffect that calls applyOptions().
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- isDarkMode intentionally omitted; theme handled by separate useEffect
-  }, [height]); // Only recreate on height change
+    // Theme changes are handled by a separate useEffect that calls applyOptions()
+  }, [height]);
 
   // Update theme
   React.useEffect(() => {
