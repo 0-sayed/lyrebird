@@ -1,8 +1,4 @@
-import type { TooltipProps } from 'recharts';
-import type {
-  NameType,
-  ValueType,
-} from 'recharts/types/component/DefaultTooltipContent';
+import type { Payload } from 'recharts/types/component/DefaultTooltipContent';
 
 // =============================================================================
 // Types
@@ -15,6 +11,11 @@ interface ChartDataItem {
   percentage?: number;
 }
 
+interface ChartTooltipProps {
+  active?: boolean;
+  payload?: Payload<number, string>[];
+}
+
 // =============================================================================
 // Component
 // =============================================================================
@@ -24,10 +25,7 @@ interface ChartDataItem {
  *
  * Displays sentiment category name, post count, and percentage
  */
-export function ChartTooltip({
-  active,
-  payload,
-}: TooltipProps<ValueType, NameType>) {
+export function ChartTooltip({ active, payload }: ChartTooltipProps) {
   if (!active || !payload || payload.length === 0 || !payload[0]) {
     return null;
   }
