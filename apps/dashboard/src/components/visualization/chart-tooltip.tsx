@@ -1,5 +1,3 @@
-import type { Payload } from 'recharts/types/component/DefaultTooltipContent';
-
 // =============================================================================
 // Types
 // =============================================================================
@@ -11,9 +9,13 @@ interface ChartDataItem {
   percentage?: number;
 }
 
+interface ChartTooltipPayload {
+  payload: ChartDataItem;
+}
+
 interface ChartTooltipProps {
   active?: boolean;
-  payload?: Payload<number, string>[];
+  payload?: ChartTooltipPayload[];
 }
 
 // =============================================================================
@@ -30,7 +32,7 @@ export function ChartTooltip({ active, payload }: ChartTooltipProps) {
     return null;
   }
 
-  const data = payload[0].payload as ChartDataItem;
+  const data = payload[0].payload;
 
   return (
     <div
