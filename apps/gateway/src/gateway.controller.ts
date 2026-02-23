@@ -16,6 +16,7 @@ import type { Request } from 'express';
 import { GatewayService } from './gateway.service';
 import { SentimentDataRepository } from '@app/database';
 import { CreateJobDto, JobResponseDto } from './dtos';
+import { CurrentUserId } from './auth/current-user-id.decorator';
 
 @ApiTags('jobs')
 @Controller('api/jobs')
@@ -39,6 +40,7 @@ export class GatewayController {
   async createJob(
     @Body() createJobDto: CreateJobDto,
     @Req() request: Request,
+    @CurrentUserId() userId: string,
   ): Promise<JobResponseDto> {
     const correlationId = request.correlationId ?? 'unknown';
 
@@ -49,6 +51,7 @@ export class GatewayController {
     const job = await this.gatewayService.createJob(
       createJobDto,
       correlationId,
+      userId,
     );
 
     return job;
@@ -61,12 +64,15 @@ export class GatewayController {
     description: 'Jobs retrieved',
     type: [JobResponseDto],
   })
-  async listJobs(@Req() request: Request): Promise<JobResponseDto[]> {
+  async listJobs(
+    @Req() request: Request,
+    @CurrentUserId() userId: string,
+  ): Promise<JobResponseDto[]> {
     const correlationId = request.correlationId ?? 'unknown';
 
-    this.logger.log(`[${correlationId}] Listing all jobs`);
+    this.logger.log(`[${correlationId}] Listing jobs for user ${userId}`);
 
-    return this.gatewayService.listJobs();
+    return this.gatewayService.listJobs(userId);
   }
 
   @Get(':id')
@@ -80,12 +86,13 @@ export class GatewayController {
   async getJob(
     @Param('id', ParseUUIDPipe) id: string,
     @Req() request: Request,
+    @CurrentUserId() userId: string,
   ): Promise<JobResponseDto> {
     const correlationId = request.correlationId ?? 'unknown';
 
     this.logger.log(`[${correlationId}] Fetching job: ${id}`);
 
-    return this.gatewayService.getJob(id);
+    return this.gatewayService.getJob(id, userId);
   }
 
   @Get(':id/results')
@@ -99,13 +106,14 @@ export class GatewayController {
   async getJobResults(
     @Param('id', ParseUUIDPipe) id: string,
     @Req() request: Request,
+    @CurrentUserId() userId: string,
   ) {
     const correlationId = request.correlationId ?? 'unknown';
 
     this.logger.log(`[${correlationId}] Fetching results for job: ${id}`);
 
     const [job, sentimentData, avgSentiment, distribution] = await Promise.all([
-      this.gatewayService.getJob(id),
+      this.gatewayService.getJob(id, userId),
       this.sentimentDataRepository.findByJobId(id),
       this.sentimentDataRepository.getAverageSentimentByJobId(id),
       this.sentimentDataRepository.getSentimentDistributionByJobId(id),
@@ -160,11 +168,12 @@ export class GatewayController {
   async deleteJob(
     @Param('id', ParseUUIDPipe) id: string,
     @Req() request: Request,
+    @CurrentUserId() userId: string,
   ): Promise<{ success: boolean }> {
     const correlationId = request.correlationId ?? 'unknown';
 
     this.logger.log(`[${correlationId}] Deleting job: ${id}`);
 
-    return this.gatewayService.deleteJob(id);
+    return this.gatewayService.deleteJob(id, userId);
   }
 }

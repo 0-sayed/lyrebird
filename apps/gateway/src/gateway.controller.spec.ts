@@ -1,4 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import {
+  INestApplication,
+  UnauthorizedException,
+  type ExecutionContext,
+} from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import request from 'supertest';
 import type { Request } from 'express';
 import { GatewayController } from './gateway.controller';
 import { GatewayService } from './gateway.service';
@@ -18,6 +25,7 @@ describe('GatewayController', () => {
 
   const TEST_JOB_ID = '123e4567-e89b-12d3-a456-426614174000';
   const TEST_CORRELATION_ID = 'test-correlation-id';
+  const TEST_USER_ID = 'test-user-id';
 
   /**
    * Creates a mock request with optional correlationId
@@ -56,30 +64,38 @@ describe('GatewayController', () => {
       const result = await controller.createJob(
         createJobDto,
         createMockRequest(TEST_CORRELATION_ID),
+        TEST_USER_ID,
       );
 
       expect(result.jobId).toBe(TEST_JOB_ID);
       expect(result.status).toBe(JobStatus.PENDING);
     });
 
-    it('should pass correlationId to service when provided', async () => {
+    it('should pass correlationId and userId to service', async () => {
       await controller.createJob(
         createJobDto,
         createMockRequest(TEST_CORRELATION_ID),
+        TEST_USER_ID,
       );
 
       expect(mockGatewayService.createJob).toHaveBeenCalledWith(
         createJobDto,
         TEST_CORRELATION_ID,
+        TEST_USER_ID,
       );
     });
 
     it('should default correlationId to unknown when not provided', async () => {
-      await controller.createJob(createJobDto, createMockRequest());
+      await controller.createJob(
+        createJobDto,
+        createMockRequest(),
+        TEST_USER_ID,
+      );
 
       expect(mockGatewayService.createJob).toHaveBeenCalledWith(
         createJobDto,
         'unknown',
+        TEST_USER_ID,
       );
     });
   });
@@ -88,10 +104,20 @@ describe('GatewayController', () => {
     it('should return array of JobResponseDto', async () => {
       const result = await controller.listJobs(
         createMockRequest(TEST_CORRELATION_ID),
+        TEST_USER_ID,
       );
 
       expect(Array.isArray(result)).toBe(true);
       expect(result[0].jobId).toBe(TEST_JOB_ID);
+    });
+
+    it('should pass userId to service', async () => {
+      await controller.listJobs(
+        createMockRequest(TEST_CORRELATION_ID),
+        TEST_USER_ID,
+      );
+
+      expect(mockGatewayService.listJobs).toHaveBeenCalledWith(TEST_USER_ID);
     });
   });
 
@@ -100,18 +126,23 @@ describe('GatewayController', () => {
       const result = await controller.getJob(
         TEST_JOB_ID,
         createMockRequest(TEST_CORRELATION_ID),
+        TEST_USER_ID,
       );
 
       expect(result.jobId).toBe(TEST_JOB_ID);
     });
 
-    it('should call service with provided job id', async () => {
+    it('should call service with job id and userId', async () => {
       await controller.getJob(
         TEST_JOB_ID,
         createMockRequest(TEST_CORRELATION_ID),
+        TEST_USER_ID,
       );
 
-      expect(mockGatewayService.getJob).toHaveBeenCalledWith(TEST_JOB_ID);
+      expect(mockGatewayService.getJob).toHaveBeenCalledWith(
+        TEST_JOB_ID,
+        TEST_USER_ID,
+      );
     });
   });
 
@@ -152,6 +183,7 @@ describe('GatewayController', () => {
       const result = await controller.getJobResults(
         TEST_JOB_ID,
         createMockRequest(TEST_CORRELATION_ID),
+        TEST_USER_ID,
       );
 
       expect(result).toHaveProperty('job');
@@ -166,6 +198,7 @@ describe('GatewayController', () => {
       const result = await controller.getJobResults(
         TEST_JOB_ID,
         createMockRequest(TEST_CORRELATION_ID),
+        TEST_USER_ID,
       );
 
       expect(result.results.averageSentiment).toBe(0.85);
@@ -179,6 +212,7 @@ describe('GatewayController', () => {
       const result = await controller.getJobResults(
         TEST_JOB_ID,
         createMockRequest(TEST_CORRELATION_ID),
+        TEST_USER_ID,
       );
 
       expect(result.results.averageSentiment).toBeNull();
@@ -192,6 +226,7 @@ describe('GatewayController', () => {
       const result = await controller.getJobResults(
         TEST_JOB_ID,
         createMockRequest(TEST_CORRELATION_ID),
+        TEST_USER_ID,
       );
 
       expect(result.results.averageSentiment).toBeNull();
@@ -206,6 +241,7 @@ describe('GatewayController', () => {
       const result = await controller.getJobResults(
         TEST_JOB_ID,
         createMockRequest(TEST_CORRELATION_ID),
+        TEST_USER_ID,
       );
 
       expect(result.results.totalDataPoints).toBe(0);
@@ -218,6 +254,7 @@ describe('GatewayController', () => {
       const result = await controller.getJobResults(
         TEST_JOB_ID,
         createMockRequest(TEST_CORRELATION_ID),
+        TEST_USER_ID,
       );
 
       expect(result.results.totalDataPoints).toBe(0);
@@ -228,6 +265,7 @@ describe('GatewayController', () => {
       const result = await controller.getJobResults(
         TEST_JOB_ID,
         createMockRequest(TEST_CORRELATION_ID),
+        TEST_USER_ID,
       );
 
       expect(result.results.data).toHaveLength(1);
@@ -251,6 +289,7 @@ describe('GatewayController', () => {
       const result = await controller.getJobResults(
         TEST_JOB_ID,
         createMockRequest(TEST_CORRELATION_ID),
+        TEST_USER_ID,
       );
 
       expect(result.results.distribution[0].count).toBe(5);
@@ -265,6 +304,7 @@ describe('GatewayController', () => {
       const result = await controller.getJobResults(
         TEST_JOB_ID,
         createMockRequest(TEST_CORRELATION_ID),
+        TEST_USER_ID,
       );
 
       expect(result.results.distribution[0].count).toBe(0);
@@ -283,9 +323,76 @@ describe('GatewayController', () => {
       const result = await controller.getJobResults(
         TEST_JOB_ID,
         createMockRequest(TEST_CORRELATION_ID),
+        TEST_USER_ID,
       );
 
       expect(result.results.data[0].publishedAt).toBe(analyzedAt);
+    });
+  });
+
+  describe('Authentication', () => {
+    it('should create job with userId from session', async () => {
+      const createJobDto = { prompt: 'Test prompt' };
+
+      const result = await controller.createJob(
+        createJobDto,
+        createMockRequest(TEST_CORRELATION_ID),
+        TEST_USER_ID,
+      );
+
+      // Verify userId extracted by @CurrentUserId() is forwarded to service
+      expect(mockGatewayService.createJob).toHaveBeenCalledWith(
+        createJobDto,
+        TEST_CORRELATION_ID,
+        TEST_USER_ID,
+      );
+      // Verify the job was created and response is valid
+      expect(result.jobId).toBe(TEST_JOB_ID);
+      expect(result.status).toBe(JobStatus.PENDING);
+    });
+
+    describe('without session (HTTP-level)', () => {
+      let app: INestApplication;
+
+      /**
+       * Mock guard that mirrors the real AuthGuard behavior:
+       * rejects with 401 when no session is present on the request.
+       */
+      const mockAuthGuard = {
+        canActivate: (context: ExecutionContext) => {
+          const req = context.switchToHttp().getRequest<Request>();
+          const session = (req as Request & { session?: unknown }).session;
+          if (!session) {
+            throw new UnauthorizedException();
+          }
+          return true;
+        },
+      };
+
+      beforeEach(async () => {
+        const module: TestingModule = await Test.createTestingModule({
+          controllers: [GatewayController],
+          providers: [
+            { provide: GatewayService, useValue: mockGatewayService },
+            {
+              provide: SentimentDataRepository,
+              useValue: mockSentimentDataRepository,
+            },
+            { provide: APP_GUARD, useValue: mockAuthGuard },
+          ],
+        }).compile();
+
+        app = module.createNestApplication();
+        await app.init();
+      });
+
+      afterEach(async () => {
+        await app.close();
+      });
+
+      it('should return 401 without session', async () => {
+        await request(app.getHttpServer()).get('/api/jobs').expect(401);
+      });
     });
   });
 
@@ -294,26 +401,38 @@ describe('GatewayController', () => {
       const result = await controller.deleteJob(
         TEST_JOB_ID,
         createMockRequest(TEST_CORRELATION_ID),
+        TEST_USER_ID,
       );
 
       expect(result).toEqual({ success: true });
     });
 
-    it('should call service with provided job id', async () => {
+    it('should call service with job id and userId', async () => {
       await controller.deleteJob(
         TEST_JOB_ID,
         createMockRequest(TEST_CORRELATION_ID),
+        TEST_USER_ID,
       );
 
-      expect(mockGatewayService.deleteJob).toHaveBeenCalledWith(TEST_JOB_ID);
+      expect(mockGatewayService.deleteJob).toHaveBeenCalledWith(
+        TEST_JOB_ID,
+        TEST_USER_ID,
+      );
     });
 
     it('should default correlationId to unknown when not provided', async () => {
-      await controller.deleteJob(TEST_JOB_ID, createMockRequest());
+      await controller.deleteJob(
+        TEST_JOB_ID,
+        createMockRequest(),
+        TEST_USER_ID,
+      );
 
       // Controller logs with correlationId but doesn't pass it to service
       // This test verifies the flow works without errors
-      expect(mockGatewayService.deleteJob).toHaveBeenCalledWith(TEST_JOB_ID);
+      expect(mockGatewayService.deleteJob).toHaveBeenCalledWith(
+        TEST_JOB_ID,
+        TEST_USER_ID,
+      );
     });
   });
 });
