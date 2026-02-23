@@ -43,6 +43,7 @@ export function AnalysisView({
   initialJobId,
   onNewAnalysis,
   onComplete,
+  onPostsSidebarVisibilityChange,
   className,
 }: AnalysisViewProps) {
   // Phase state machine
@@ -201,6 +202,13 @@ export function AnalysisView({
 
   const isAnalyzing = phase.type === 'analyzing';
   const isCompleted = phase.type === 'completed';
+
+  // Report posts sidebar visibility to parent for header layout adjustment
+  const isPostsSidebarVisible =
+    isCompleted && postsSidebarOpen && Boolean(jobResults?.data);
+  React.useEffect(() => {
+    onPostsSidebarVisibilityChange?.(isPostsSidebarVisible);
+  }, [isPostsSidebarVisible, onPostsSidebarVisibilityChange]);
   const showConnectionStatus =
     isAnalyzing &&
     activeJob?.status !== JobStatus.COMPLETED &&

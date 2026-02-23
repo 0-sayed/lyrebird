@@ -62,6 +62,10 @@ export function Dashboard() {
   // Track if app is ready (initial hydration complete)
   const [isAppReady, setIsAppReady] = React.useState(false);
 
+  // Track posts sidebar visibility for header layout
+  const [isPostsSidebarVisible, setIsPostsSidebarVisible] =
+    React.useState(false);
+
   // Read initial sidebar state from cookie (shadcn sidebar uses cookies)
   const initialSidebarOpen = React.useMemo(() => getSidebarCookieState(), []);
 
@@ -107,6 +111,7 @@ export function Dashboard() {
       <RootLayout
         activeJobId={activeJobId ?? undefined}
         initialSidebarOpen={initialSidebarOpen}
+        isPostsSidebarVisible={isPostsSidebarVisible}
         onNewChat={() => setActiveJobId(null)}
         onSelectJob={setActiveJobId}
         onJobDeleted={handleJobDeleted}
@@ -116,6 +121,7 @@ export function Dashboard() {
           initialJobId={activeJobId ?? undefined}
           onNewAnalysis={setActiveJobId}
           onComplete={setActiveJobId}
+          onPostsSidebarVisibilityChange={setIsPostsSidebarVisible}
         />
       </RootLayout>
     </>

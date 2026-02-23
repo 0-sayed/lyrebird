@@ -14,6 +14,8 @@ interface RootLayoutProps {
   activeJobId?: string;
   /** Initial sidebar open state from cookie. Defaults to true. */
   initialSidebarOpen?: boolean;
+  /** Whether the posts sidebar is currently visible */
+  isPostsSidebarVisible?: boolean;
   onNewChat?: () => void;
   onSelectJob?: (jobId: string) => void;
   onJobDeleted?: (jobId: string) => void;
@@ -39,6 +41,7 @@ export function RootLayout({
   children,
   activeJobId,
   initialSidebarOpen = true,
+  isPostsSidebarVisible = false,
   onNewChat,
   onSelectJob,
   onJobDeleted,
@@ -54,8 +57,8 @@ export function RootLayout({
           onJobDeleted={onJobDeleted}
         />
         <SidebarInset>
-          <MobileHeader />
-          <DesktopHeader />
+          <MobileHeader isPostsSidebarVisible={isPostsSidebarVisible} />
+          <DesktopHeader isPostsSidebarVisible={isPostsSidebarVisible} />
           <main
             className="flex flex-1 flex-col"
             id="main-content"
