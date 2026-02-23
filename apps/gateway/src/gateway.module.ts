@@ -18,10 +18,16 @@ import { CorrelationIdInterceptor } from './interceptors/correlation-id.intercep
 import { TestControlModule } from './controllers/test-control.module';
 
 /**
- * Conditionally import TestControlModule only in test mode
- * This allows Playwright E2E tests to trigger SSE events via HTTP endpoints
+ * Conditionally import TestControlModule only when explicitly enabled in test mode.
+ * Requires both NODE_ENV=test AND ENABLE_TEST_ENDPOINTS=true as a defence-in-depth
+ * measure against accidental exposure. The dedicated E2E server (e2e-server.ts)
+ * registers TestControlController directly, so this flag does not affect E2E tests.
  */
-const testModules = process.env.NODE_ENV === 'test' ? [TestControlModule] : [];
+const testModules =
+  process.env.NODE_ENV === 'test' &&
+  process.env.ENABLE_TEST_ENDPOINTS === 'true'
+    ? [TestControlModule]
+    : [];
 
 @Module({
   imports: [

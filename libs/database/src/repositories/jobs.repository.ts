@@ -12,7 +12,7 @@ export class JobsRepository {
    * Create a new job
    */
   async create(
-    data: Pick<NewJob, 'prompt' | 'status' | 'userId'>,
+    data: Pick<NewJob, 'prompt' | 'status'> & { userId: string },
   ): Promise<Job> {
     const [job] = await this.databaseService.db
       .insert(jobs)
