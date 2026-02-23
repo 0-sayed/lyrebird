@@ -7,7 +7,9 @@ import { GatewayService } from './gateway.service';
 import { JobEventsController } from './controllers/job-events.controller';
 import { JobSseController } from './controllers/job-sse.controller';
 import { JobEventsService } from './services/job-events.service';
-import { DatabaseModule } from '@app/database';
+import { DatabaseModule, DatabaseService } from '@app/database';
+import { AuthModule } from '@thallesp/nestjs-better-auth';
+import { createAuth } from './auth';
 import { LoggerModule } from '@app/logger';
 import { RabbitmqModule } from '@app/rabbitmq';
 import { HealthModule } from './health/health.module';
@@ -33,6 +35,13 @@ const testModules = process.env.NODE_ENV === 'test' ? [TestControlModule] : [];
       ignoreErrors: false,
     }),
     DatabaseModule,
+    AuthModule.forRootAsync({
+      inject: [DatabaseService],
+      useFactory: (databaseService: DatabaseService) => ({
+        auth: createAuth(databaseService),
+        withGlobalGuard: true,
+      }),
+    }),
     LoggerModule,
     RabbitmqModule,
     HealthModule,
