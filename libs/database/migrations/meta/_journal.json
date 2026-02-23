@@ -15,6 +15,13 @@
       "when": 1766252754000,
       "tag": "20251220174554_timescaledb_setup",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1771608513893,
+      "tag": "20260220172833_sharp_rage",
+      "breakpoints": true
     }
   ]
 }
