@@ -32,6 +32,7 @@ export function createMockDrizzleQueryBuilder(): MockQueryBuilder {
   builder.select = jest.fn().mockReturnValue(builder);
   builder.from = jest.fn().mockReturnValue(builder);
   builder.where = jest.fn().mockReturnValue(builder);
+  builder.orderBy = jest.fn().mockReturnValue(builder);
   builder.update = jest.fn().mockReturnValue(builder);
   builder.set = jest.fn().mockReturnValue(builder);
   builder.delete = jest.fn().mockReturnValue(builder);

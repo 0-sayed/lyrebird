@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { JobStatus } from '@app/shared-types';
 import { DatabaseService } from '../database.service';
 import { jobs, NewJob, Job } from '../schema';
@@ -11,7 +11,9 @@ export class JobsRepository {
   /**
    * Create a new job
    */
-  async create(data: Pick<NewJob, 'prompt' | 'status'>): Promise<Job> {
+  async create(
+    data: Pick<NewJob, 'prompt' | 'status' | 'userId'>,
+  ): Promise<Job> {
     const [job] = await this.databaseService.db
       .insert(jobs)
       .values(data)
@@ -57,6 +59,32 @@ export class JobsRepository {
     const [deletedJob] = await this.databaseService.db
       .delete(jobs)
       .where(eq(jobs.id, jobId))
+      .returning();
+    return deletedJob;
+  }
+
+  // === User-scoped methods (gateway only) ===
+
+  async findAllForUser(userId: string): Promise<Job[]> {
+    return this.databaseService.db
+      .select()
+      .from(jobs)
+      .where(eq(jobs.userId, userId))
+      .orderBy(desc(jobs.createdAt));
+  }
+
+  async findByIdForUser(id: string, userId: string): Promise<Job | undefined> {
+    const [job] = await this.databaseService.db
+      .select()
+      .from(jobs)
+      .where(and(eq(jobs.id, id), eq(jobs.userId, userId)));
+    return job;
+  }
+
+  async deleteForUser(id: string, userId: string): Promise<Job | undefined> {
+    const [deletedJob] = await this.databaseService.db
+      .delete(jobs)
+      .where(and(eq(jobs.id, id), eq(jobs.userId, userId)))
       .returning();
     return deletedJob;
   }
