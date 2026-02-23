@@ -47,7 +47,7 @@ CREATE TABLE "verification" (
 );
 --> statement-breakpoint
 ALTER TABLE "jobs" ADD COLUMN "user_id" text;--> statement-breakpoint
-ALTER TABLE "sentiment_data" ADD COLUMN "published_at" timestamp NOT NULL;--> statement-breakpoint
+ALTER TABLE "sentiment_data" ADD COLUMN "published_at" timestamp DEFAULT '1970-01-01 00:00:00' NOT NULL;--> statement-breakpoint
 ALTER TABLE "account" ADD CONSTRAINT "account_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "session" ADD CONSTRAINT "session_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "account_user_id_idx" ON "account" USING btree ("user_id");--> statement-breakpoint
