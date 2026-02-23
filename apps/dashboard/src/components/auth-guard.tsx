@@ -1,9 +1,10 @@
+import type { ReactNode } from 'react';
 import { Loader2 } from 'lucide-react';
 
 import { useSession } from '@/lib/auth-client';
 import { SignInPage } from '@/pages/sign-in';
 
-export function AuthGuard({ children }: { children: React.ReactNode }) {
+export function AuthGuard({ children }: { children: ReactNode }) {
   const { data: session, isPending } = useSession();
 
   if (isPending) {

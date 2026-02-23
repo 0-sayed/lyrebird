@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { render, screen } from '@/__tests__/test-utils';
 import { AuthGuard } from '../auth-guard';
@@ -23,11 +23,13 @@ vi.mock('@/lib/auth-client', () => ({
 // =============================================================================
 
 describe('AuthGuard', () => {
+  beforeEach(() => {
+    mockSession = null;
+    mockIsPending = false;
+  });
+
   describe('when not authenticated', () => {
     it('should show sign-in page', () => {
-      mockSession = null;
-      mockIsPending = false;
-
       render(
         <AuthGuard>
           <div>Protected content</div>

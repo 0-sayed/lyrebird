@@ -55,7 +55,7 @@ export function SignInPage() {
   }
 
   return (
-    <div className="dark">
+    <div>
       <Vortex
         containerClassName="min-h-screen"
         className="flex min-h-screen items-center justify-center p-4 pb-[20vh]"

@@ -38,7 +38,15 @@ export function UserMenu() {
       <DropdownMenuContent align="end">
         <DropdownMenuLabel>{name}</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => signOut()}>
+        <DropdownMenuItem
+          onClick={async () => {
+            try {
+              await signOut();
+            } catch (error) {
+              console.error('Failed to sign out:', error);
+            }
+          }}
+        >
           <LogOut className="mr-2 h-4 w-4" />
           Sign out
         </DropdownMenuItem>
