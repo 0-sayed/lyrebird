@@ -1,4 +1,8 @@
-import { createParamDecorator, ExecutionContext } from '@nestjs/common';
+import {
+  createParamDecorator,
+  ExecutionContext,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Request } from 'express';
 
 /**
@@ -12,6 +16,10 @@ export const CurrentUserId = createParamDecorator(
     const request = ctx
       .switchToHttp()
       .getRequest<Request & { session?: { user?: { id: string } } }>();
-    return request.session?.user?.id as string;
+    const userId = request.session?.user?.id;
+    if (!userId) {
+      throw new UnauthorizedException('No authenticated user');
+    }
+    return userId;
   },
 );
