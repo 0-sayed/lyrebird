@@ -1,6 +1,7 @@
 import { Controller, Get } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { AllowAnonymous } from '@thallesp/nestjs-better-auth';
 import {
   HealthCheck,
   HealthCheckService,
@@ -8,6 +9,7 @@ import {
 } from '@nestjs/terminus';
 
 @ApiTags('health')
+@AllowAnonymous()
 @Controller('health')
 export class HealthController {
   private readonly heapLimitBytes: number;

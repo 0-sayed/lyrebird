@@ -19,7 +19,10 @@ async function bootstrap() {
 
   // Create hybrid application (HTTP + Microservice)
   // bufferLogs ensures logs during bootstrap are captured
-  const app = await NestFactory.create(GatewayModule, { bufferLogs: true });
+  const app = await NestFactory.create(GatewayModule, {
+    bufferLogs: true,
+    bodyParser: false, // Required for Better Auth to handle raw request bodies
+  });
 
   // Use Pino logger for all NestJS logging
   const logger = app.get(Logger);

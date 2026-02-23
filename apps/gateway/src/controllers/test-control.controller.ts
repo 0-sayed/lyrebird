@@ -1,5 +1,6 @@
 import { Controller, Post, Body, HttpCode } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { AllowAnonymous } from '@thallesp/nestjs-better-auth';
 import { JobStatus, SentimentLabel } from '@app/shared-types';
 import { JobsRepository, SentimentDataRepository } from '@app/database';
 import { JOB_EVENTS } from '../events';
@@ -14,6 +15,7 @@ import type {
  * Test-only controller for triggering SSE events from Playwright
  * Only registered when NODE_ENV === 'test'
  */
+@AllowAnonymous()
 @Controller('__test')
 export class TestControlController {
   constructor(
