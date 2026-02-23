@@ -19,6 +19,9 @@ const ReactQueryDevtools = import.meta.env.DEV
   : () => null;
 
 function App() {
+  // NOTE: This reads window.location.pathname directly, so it only evaluates
+  // on full page loads. If client-side routing (e.g. React Router) is added
+  // later, replace this with the router's location/pathname hook.
   const pathname = window.location.pathname;
 
   if (pathname === '/terms') {

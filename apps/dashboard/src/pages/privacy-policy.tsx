@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Bird, ArrowLeft } from 'lucide-react';
 
 export function PrivacyPolicyPage() {
@@ -194,13 +195,7 @@ export function PrivacyPolicyPage() {
   );
 }
 
-function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
+function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="space-y-3">
       <h2 className="text-base font-semibold tracking-tight">{title}</h2>
@@ -214,7 +209,7 @@ function Subsection({
   children,
 }: {
   label: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <p>
