@@ -8,6 +8,7 @@ export interface MockJob {
   id: string;
   prompt: string;
   status: JobStatus;
+  userId?: string;
   createdAt: Date;
   updatedAt: Date;
   completedAt: Date | null;
@@ -48,23 +49,32 @@ export class MockJobStore {
 export const createMockJobsRepository = (
   store: MockJobStore = new MockJobStore(),
 ) => ({
-  create: jest.fn((data: { prompt: string; status: JobStatus }): MockJob => {
-    const id = generateId();
-    const job: MockJob = {
-      id,
-      prompt: data.prompt,
-      status: data.status,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      completedAt: null,
-    };
-    store.set(id, job);
-    return job;
-  }),
+  create: jest.fn(
+    (data: { prompt: string; status: JobStatus; userId?: string }): MockJob => {
+      const id = generateId();
+      const job: MockJob = {
+        id,
+        prompt: data.prompt,
+        status: data.status,
+        userId: data.userId,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        completedAt: null,
+      };
+      store.set(id, job);
+      return job;
+    },
+  ),
 
   findById: jest.fn((jobId: string): MockJob | undefined => store.get(jobId)),
 
   findAll: jest.fn((): MockJob[] => store.getAll()),
+
+  findByIdForUser: jest.fn(
+    (jobId: string, _userId: string): MockJob | undefined => store.get(jobId),
+  ),
+
+  findAllForUser: jest.fn((_userId: string): MockJob[] => store.getAll()),
 
   updateStatus: jest.fn((jobId: string, status: JobStatus): MockJob => {
     const job = store.get(jobId);
@@ -87,6 +97,17 @@ export const createMockJobsRepository = (
     }
     return undefined;
   }),
+
+  deleteForUser: jest.fn(
+    (jobId: string, _userId: string): MockJob | undefined => {
+      const job = store.get(jobId);
+      if (job) {
+        store.delete(jobId);
+        return job;
+      }
+      return undefined;
+    },
+  ),
 
   // Expose store for test assertions
   _store: store,
