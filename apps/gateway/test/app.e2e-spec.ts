@@ -117,6 +117,18 @@ describe('Gateway API (e2e)', () => {
 
     app = moduleFixture.createNestApplication();
 
+    // Inject fake session so @CurrentUserId() resolves without real auth
+    app.use(
+      (
+        req: { session?: { user?: { id: string } } },
+        _res: unknown,
+        next: () => void,
+      ) => {
+        req.session = { user: { id: 'test-user-id' } };
+        next();
+      },
+    );
+
     // Apply same pipes as main.ts
     app.useGlobalPipes(
       new ValidationPipe({
