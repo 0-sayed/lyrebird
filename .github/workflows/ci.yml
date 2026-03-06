@@ -203,23 +203,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install PostgreSQL client
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y postgresql-client
-
-      - name: Wait for PostgreSQL
-        run: |
-          until pg_isready -h localhost -p 5432 -U postgres; do
-            echo "Waiting for PostgreSQL..."
-            sleep 2
-          done
-
       - name: Run database migrations
         run: pnpm db:migrate
 
       - name: Run E2E tests
         run: pnpm test:e2e:all
+
+      - name: Run database integration tests
+        run: pnpm test:integration
 
   # ========================================
   # Build Job - Compile TypeScript
