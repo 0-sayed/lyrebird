@@ -15,6 +15,13 @@
       "when": 1766252754000,
       "tag": "20251220174554_timescaledb_setup",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1772748564352,
+      "tag": "20260305220924_fat_fenris",
+      "breakpoints": true
     }
   ]
 }
