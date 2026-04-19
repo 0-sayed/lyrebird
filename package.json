@@ -139,7 +139,7 @@
     "testPathIgnorePatterns": [
       "/node_modules/",
       "/apps/dashboard/e2e/",
-      ".*\\.integration\\.spec\\.ts$"
+      ".*(\\.|-)integration\\.spec\\.ts$"
     ],
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
@@ -159,6 +159,7 @@
       "!**/*.spec.ts",
       "!**/*.e2e-spec.ts",
       "!**/*.integration.spec.ts",
+      "!**/*-integration.spec.ts",
       "!**/health/**",
       "!**/filters/**",
       "!**/interceptors/**",

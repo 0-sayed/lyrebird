@@ -22,6 +22,6 @@ describe('Integration Test Infrastructure (smoke test)', () => {
   });
 
   it('should clean all tables without error', async () => {
-    await expect(testDb.cleanTables()).resolves.not.toThrow();
+    await testDb.cleanTables();
   });
 });
