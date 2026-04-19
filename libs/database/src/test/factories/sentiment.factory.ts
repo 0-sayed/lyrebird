@@ -22,7 +22,7 @@ export function createTestSentimentData(
     authorName: overrides.authorName ?? `user${sentimentIdCounter}`,
     textContent: overrides.textContent ?? `Test content ${sentimentIdCounter}`,
     rawContent: overrides.rawContent ?? `Test content ${sentimentIdCounter}`,
-    sentimentScore: overrides.sentimentScore ?? 0.5,
+    sentimentScore: overrides.sentimentScore ?? 0,
     sentimentLabel: overrides.sentimentLabel ?? SentimentLabel.NEUTRAL,
     confidence: overrides.confidence ?? 0.85,
     upvotes: overrides.upvotes ?? 0,

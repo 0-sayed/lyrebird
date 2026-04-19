@@ -32,8 +32,12 @@ export class JobsRepository {
 
   /**
    * Update job status
+   * @returns The updated job, or undefined when no row matches the provided ID
    */
-  async updateStatus(jobId: string, status: JobStatus): Promise<Job> {
+  async updateStatus(
+    jobId: string,
+    status: JobStatus,
+  ): Promise<Job | undefined> {
     const [job] = await this.databaseService.db
       .update(jobs)
       .set({ status, updatedAt: new Date() })

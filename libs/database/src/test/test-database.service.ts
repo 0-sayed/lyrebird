@@ -1,12 +1,39 @@
 import { drizzle, NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { sql } from 'drizzle-orm';
 import { Pool } from 'pg';
-import { config } from 'dotenv';
+import { existsSync, readFileSync } from 'fs';
 import * as path from 'path';
 import * as schema from '../schema';
 
-// Load test environment
-config({ path: path.resolve(process.cwd(), '.env.test') });
+const TEST_DATABASE_NAME_PATTERN = /(^|_)test$/i;
+const DEFAULT_TEST_DATABASE_NAME = 'lyrebird_test';
+const TEST_ENV_PATH = path.resolve(process.cwd(), '.env.test');
+
+function loadTestEnvironment(envPath: string): void {
+  if (!existsSync(envPath)) return;
+
+  const envFile = readFileSync(envPath, 'utf8');
+
+  for (const line of envFile.split(/\r?\n/)) {
+    const trimmedLine = line.trim();
+    if (!trimmedLine || trimmedLine.startsWith('#')) continue;
+
+    const separatorIndex = trimmedLine.indexOf('=');
+    if (separatorIndex === -1) continue;
+
+    const key = trimmedLine.slice(0, separatorIndex).trim();
+    const rawValue = trimmedLine.slice(separatorIndex + 1).trim();
+    const value =
+      (rawValue.startsWith('"') && rawValue.endsWith('"')) ||
+      (rawValue.startsWith("'") && rawValue.endsWith("'"))
+        ? rawValue.slice(1, -1)
+        : rawValue;
+
+    process.env[key] = value;
+  }
+}
+
+loadTestEnvironment(TEST_ENV_PATH);
 
 /**
  * Lightweight DatabaseService implementation for integration tests.
@@ -20,19 +47,33 @@ export class TestDatabaseService {
   private pool: Pool | null = null;
   private _db: NodePgDatabase<typeof schema> | null = null;
 
+  private assertSafeTestDatabaseConfig(): string {
+    const nodeEnv = process.env.NODE_ENV;
+    const databaseName = process.env.DATABASE_NAME || DEFAULT_TEST_DATABASE_NAME;
+
+    if (nodeEnv !== 'test' || !TEST_DATABASE_NAME_PATTERN.test(databaseName)) {
+      throw new Error(
+        `Refusing to use a non-test database configuration. NODE_ENV=${nodeEnv ?? 'undefined'}, DATABASE_NAME=${databaseName}`,
+      );
+    }
+
+    return databaseName;
+  }
+
   /**
    * Initialize database connection.
    * Assumes migrations have already been applied externally.
    */
   connect(): void {
     if (this._db) return;
+    const databaseName = this.assertSafeTestDatabaseConfig();
 
     this.pool = new Pool({
       host: process.env.DATABASE_HOST || 'localhost',
       port: parseInt(process.env.DATABASE_PORT || '5432', 10),
       user: process.env.DATABASE_USER || 'postgres',
       password: process.env.DATABASE_PASSWORD || 'postgres',
-      database: process.env.DATABASE_NAME || 'lyrebird_test',
+      database: databaseName,
       max: 5, // Limit connections in tests
     });
 
@@ -68,6 +109,7 @@ export class TestDatabaseService {
    */
   async cleanTables(): Promise<void> {
     if (!this._db) return;
+    this.assertSafeTestDatabaseConfig();
     await this._db.execute(sql`TRUNCATE TABLE sentiment_data, jobs CASCADE`);
   }
 }

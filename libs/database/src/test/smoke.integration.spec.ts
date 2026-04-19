@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import {
   getTestDatabaseService,
   TestDatabaseService,
@@ -16,7 +17,7 @@ describe('Integration Test Infrastructure (smoke test)', () => {
   });
 
   it('should connect to test database', async () => {
-    const result = await testDb.db.execute('SELECT 1 as connected');
+    const result = await testDb.db.execute(sql`SELECT 1 as connected`);
     expect(result).toBeDefined();
   });
 

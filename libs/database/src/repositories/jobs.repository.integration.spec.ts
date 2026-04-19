@@ -94,8 +94,8 @@ describe('JobsRepository Integration', () => {
       );
 
       expect(updated).toBeDefined();
-      expect(updated.id).toBe(created.id);
-      expect(updated.status).toBe(JobStatus.IN_PROGRESS);
+      expect(updated?.id).toBe(created.id);
+      expect(updated?.status).toBe(JobStatus.IN_PROGRESS);
     });
 
     it('should update the updatedAt timestamp', async () => {
@@ -110,7 +110,8 @@ describe('JobsRepository Integration', () => {
         JobStatus.COMPLETED,
       );
 
-      expect(updated.updatedAt.getTime()).toBeGreaterThanOrEqual(
+      expect(updated).toBeDefined();
+      expect(updated!.updatedAt.getTime()).toBeGreaterThan(
         originalUpdatedAt.getTime(),
       );
     });
@@ -137,7 +138,8 @@ describe('JobsRepository Integration', () => {
         );
         const updated = await jobsRepository.updateStatus(created.id, toStatus);
 
-        expect(updated.status).toBe(toStatus);
+        expect(updated).toBeDefined();
+        expect(updated?.status).toBe(toStatus);
       },
     );
   });
