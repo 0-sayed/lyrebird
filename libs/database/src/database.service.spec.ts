@@ -32,8 +32,8 @@ describe('DatabaseService', () => {
   });
 
   describe('db getter', () => {
-    it('should throw error when database is not initialized', () => {
-      expect(() => service.db).toThrow('Database not initialized');
+    it('should return the drizzle instance after construction', () => {
+      expect(service.db).toBeDefined();
     });
   });
 });

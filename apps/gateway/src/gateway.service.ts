@@ -25,6 +25,7 @@ export class GatewayService {
   async createJob(
     createJobDto: CreateJobDto,
     correlationId: string,
+    userId: string,
   ): Promise<JobResponseDto> {
     try {
       this.logger.log(
@@ -35,6 +36,7 @@ export class GatewayService {
       const job = await this.jobsRepository.create({
         prompt: createJobDto.prompt,
         status: JobStatus.PENDING,
+        userId,
       });
 
       this.logger.log(`[${correlationId}] Job created: ${job.id}`);
@@ -66,8 +68,8 @@ export class GatewayService {
   /**
    * Get job by ID
    */
-  async getJob(jobId: string): Promise<JobResponseDto> {
-    const job = await this.jobsRepository.findById(jobId);
+  async getJob(jobId: string, userId: string): Promise<JobResponseDto> {
+    const job = await this.jobsRepository.findByIdForUser(jobId, userId);
 
     if (!job) {
       throw new NotFoundException(`Job with ID ${jobId} not found`);
@@ -79,8 +81,8 @@ export class GatewayService {
   /**
    * List all jobs
    */
-  async listJobs(): Promise<JobResponseDto[]> {
-    const jobs = await this.jobsRepository.findAll();
+  async listJobs(userId: string): Promise<JobResponseDto[]> {
+    const jobs = await this.jobsRepository.findAllForUser(userId);
 
     return Promise.all(jobs.map((job) => this.toJobResponseDto(job)));
   }
@@ -88,8 +90,11 @@ export class GatewayService {
   /**
    * Delete a job and its associated sentiment data
    */
-  async deleteJob(jobId: string): Promise<{ success: boolean }> {
-    const job = await this.jobsRepository.findById(jobId);
+  async deleteJob(
+    jobId: string,
+    userId: string,
+  ): Promise<{ success: boolean }> {
+    const job = await this.jobsRepository.findByIdForUser(jobId, userId);
 
     if (!job) {
       throw new NotFoundException(`Job with ID ${jobId} not found`);
@@ -106,8 +111,8 @@ export class GatewayService {
     // Delete associated sentiment data first (cascade)
     await this.sentimentDataRepository.deleteByJobId(jobId);
 
-    // Delete the job
-    await this.jobsRepository.delete(jobId);
+    // Delete the job (ownership already verified above)
+    await this.jobsRepository.deleteForUser(jobId, userId);
 
     this.logger.log(`Deleted job ${jobId} and its associated data`);
 

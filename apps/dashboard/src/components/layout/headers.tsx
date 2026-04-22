@@ -2,13 +2,25 @@ import { Bird, Menu } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { SidebarTrigger } from '@/components/ui/sidebar';
+import { UserMenu } from '@/components/user-menu';
+import { cn } from '@/lib/utils';
+
+interface HeaderProps {
+  /** Whether the posts sidebar is currently visible */
+  isPostsSidebarVisible?: boolean;
+}
 
 /**
  * Mobile header with menu trigger
  */
-export function MobileHeader() {
+export function MobileHeader({ isPostsSidebarVisible }: HeaderProps) {
   return (
-    <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background px-4 md:hidden">
+    <header
+      className={cn(
+        'sticky top-0 flex h-14 items-center gap-4 border-b bg-background px-4 transition-[margin] duration-300 md:hidden',
+        isPostsSidebarVisible && 'mr-96',
+      )}
+    >
       <SidebarTrigger>
         <Menu className="h-5 w-5" />
         <span className="sr-only">Toggle menu</span>
@@ -20,15 +32,29 @@ export function MobileHeader() {
           BETA
         </Badge>
       </div>
+      <div className="ml-auto">
+        <UserMenu />
+      </div>
     </header>
   );
 }
 
 /**
- * Desktop header — branding lives in AppSidebar; nothing needed here.
+ * Desktop header keeps account actions visible while branding lives in AppSidebar.
  */
-export function DesktopHeader() {
-  return null;
+export function DesktopHeader({ isPostsSidebarVisible }: HeaderProps) {
+  return (
+    <header
+      className={cn(
+        'sticky top-0 hidden h-14 items-center gap-4 border-b bg-background px-4 transition-[margin] duration-300 md:flex',
+        isPostsSidebarVisible && 'mr-96',
+      )}
+    >
+      <div className="ml-auto">
+        <UserMenu />
+      </div>
+    </header>
+  );
 }
 
 /**

@@ -8,9 +8,10 @@ import { JobStatus } from '@app/shared-types';
 export class JobRepositoryStub implements Partial<JobsRepository> {
   private jobs: Map<string, Job> = new Map();
 
-  create(data: Pick<NewJob, 'prompt' | 'status'>): Promise<Job> {
+  create(data: Pick<NewJob, 'prompt' | 'status' | 'userId'>): Promise<Job> {
     const job: Job = {
       id: crypto.randomUUID(),
+      userId: data.userId ?? null,
       prompt: data.prompt,
       status: data.status ?? JobStatus.PENDING,
       searchStrategy: null,
@@ -50,6 +51,32 @@ export class JobRepositoryStub implements Partial<JobsRepository> {
       this.jobs.delete(jobId);
     }
     return Promise.resolve(job);
+  }
+
+  // === User-scoped methods (gateway only) ===
+
+  findAllForUser(userId: string): Promise<Job[]> {
+    const userJobs = Array.from(this.jobs.values())
+      .filter((job) => job.userId === userId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    return Promise.resolve(userJobs);
+  }
+
+  findByIdForUser(id: string, userId: string): Promise<Job | undefined> {
+    const job = this.jobs.get(id);
+    if (job && job.userId === userId) {
+      return Promise.resolve(job);
+    }
+    return Promise.resolve(undefined);
+  }
+
+  deleteForUser(id: string, userId: string): Promise<Job | undefined> {
+    const job = this.jobs.get(id);
+    if (job && job.userId === userId) {
+      this.jobs.delete(id);
+      return Promise.resolve(job);
+    }
+    return Promise.resolve(undefined);
   }
 
   // Test helpers

@@ -1,1 +1,0 @@
-CREATE UNIQUE INDEX "sentiment_data_job_id_source_url_idx" ON "sentiment_data" USING btree ("job_id","source_url","published_at");

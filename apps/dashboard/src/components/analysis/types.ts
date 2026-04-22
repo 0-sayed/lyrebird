@@ -160,6 +160,8 @@ export interface AnalysisViewProps {
   onNewAnalysis?: (jobId: string) => void;
   /** Called when analysis completes */
   onComplete?: (jobId: string) => void;
+  /** Called when posts sidebar visibility changes */
+  onPostsSidebarVisibilityChange?: (visible: boolean) => void;
   /** Additional class names */
   className?: string;
 }

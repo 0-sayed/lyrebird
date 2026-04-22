@@ -42,7 +42,10 @@ describe('JobsRepository Integration', () => {
     it('should default status to PENDING when not specified', async () => {
       const input = createTestJob({ prompt: 'No status provided' });
       // status is PENDING from factory, but explicitly omit to rely on DB default
-      const job = await jobsRepository.create({ prompt: input.prompt });
+      const job = await jobsRepository.create({
+        prompt: input.prompt,
+        userId: input.userId,
+      });
 
       expect(job.status).toBe(JobStatus.PENDING);
     });

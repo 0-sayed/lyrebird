@@ -1,12 +1,15 @@
 import { JobStatus } from '@app/shared-types';
-import { NewJob } from '../../schema/jobs.schema';
 
 let jobCounter = 0;
 
 /**
  * Input type matching JobsRepository.create() signature.
  */
-export type CreateJobInput = Pick<NewJob, 'prompt' | 'status'>;
+export interface CreateJobInput {
+  prompt: string;
+  status?: JobStatus;
+  userId: string;
+}
 
 /**
  * Factory for creating test job data.
@@ -19,6 +22,7 @@ export function createTestJob(
   return {
     prompt: overrides.prompt ?? `Test prompt ${jobCounter}`,
     status: overrides.status ?? JobStatus.PENDING,
+    userId: overrides.userId ?? 'test-user-id',
   };
 }
 

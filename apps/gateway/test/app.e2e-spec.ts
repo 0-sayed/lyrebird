@@ -1,3 +1,8 @@
+// Mock better-auth to avoid ESM import errors — the e2e test doesn't use auth
+jest.mock('@thallesp/nestjs-better-auth', () => ({
+  AllowAnonymous: () => () => {},
+}));
+
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
@@ -111,6 +116,18 @@ describe('Gateway API (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
+
+    // Inject fake session so @CurrentUserId() resolves without real auth
+    app.use(
+      (
+        req: { session?: { user?: { id: string } } },
+        _res: unknown,
+        next: () => void,
+      ) => {
+        req.session = { user: { id: 'test-user-id' } };
+        next();
+      },
+    );
 
     // Apply same pipes as main.ts
     app.useGlobalPipes(

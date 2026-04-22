@@ -18,6 +18,7 @@ import {
 } from 'rxjs';
 import { JobsRepository } from '@app/database';
 import { JobStatus } from '@app/shared-types';
+import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { JOB_EVENTS, SSE_MESSAGE_TYPES } from '../events';
 import type {
   JobCompletedEvent,
@@ -66,6 +67,7 @@ export class JobSseController {
   @ApiResponse({ status: 404, description: 'Job not found' })
   subscribeToJobEvents(
     @Param('id', ParseUUIDPipe) jobId: string,
+    @CurrentUserId() userId: string,
   ): Observable<MessageEvent> {
     this.logger.log(`SSE connection requested for job: ${jobId}`);
 
@@ -73,13 +75,15 @@ export class JobSseController {
     return new Observable<MessageEvent>((subscriber) => {
       const destroy$ = new Subject<void>();
 
-      this.initializeJobStream(jobId, subscriber, destroy$).catch((err) => {
-        this.logger.error(
-          `Failed to initialize job stream for job: ${jobId}`,
-          err instanceof Error ? err.stack : String(err),
-        );
-        subscriber.error(err);
-      });
+      this.initializeJobStream(jobId, userId, subscriber, destroy$).catch(
+        (err) => {
+          this.logger.error(
+            `Failed to initialize job stream for job: ${jobId}`,
+            err instanceof Error ? err.stack : String(err),
+          );
+          subscriber.error(err);
+        },
+      );
 
       // Teardown: cleanup when client disconnects
       return () => {
@@ -95,6 +99,7 @@ export class JobSseController {
    */
   private async initializeJobStream(
     jobId: string,
+    userId: string,
     subscriber: {
       next: (value: MessageEvent) => void;
       complete: () => void;
@@ -103,8 +108,7 @@ export class JobSseController {
     destroy$: Subject<void>,
   ): Promise<void> {
     try {
-      // Verify job exists
-      const job = await this.jobsRepository.findById(jobId);
+      const job = await this.jobsRepository.findByIdForUser(jobId, userId);
       if (!job) {
         subscriber.next(
           this.createMessageEvent(SSE_MESSAGE_TYPES.ERROR, {

@@ -20,6 +20,7 @@ describe('JobsRepository', () => {
    */
   const createMockJob = (overrides: Partial<Job> = {}): Job => ({
     id: '123e4567-e89b-12d3-a456-426614174000',
+    userId: 'test-user-id',
     prompt: 'Test prompt for TDD',
     status: JobStatus.PENDING,
     searchStrategy: null,
@@ -55,6 +56,7 @@ describe('JobsRepository', () => {
       const result = await repository.create({
         prompt: 'Test prompt for TDD',
         status: JobStatus.PENDING,
+        userId: 'test-user-id',
       });
 
       expect(result).toEqual(mockJob);
@@ -62,6 +64,7 @@ describe('JobsRepository', () => {
       expect(mockDb.values).toHaveBeenCalledWith({
         prompt: 'Test prompt for TDD',
         status: JobStatus.PENDING,
+        userId: 'test-user-id',
       });
       expect(mockDb.returning).toHaveBeenCalled();
     });
@@ -75,7 +78,11 @@ describe('JobsRepository', () => {
       const mockJob = createMockJob({ status });
       mockDb.returning.mockResolvedValue([mockJob]);
 
-      const result = await repository.create({ prompt: 'Test', status });
+      const result = await repository.create({
+        prompt: 'Test',
+        status,
+        userId: 'test-user-id',
+      });
 
       expect(result.status).toBe(status);
     });
@@ -86,7 +93,11 @@ describe('JobsRepository', () => {
       );
 
       await expect(
-        repository.create({ prompt: 'Test', status: JobStatus.PENDING }),
+        repository.create({
+          prompt: 'Test',
+          status: JobStatus.PENDING,
+          userId: 'test-user-id',
+        }),
       ).rejects.toThrow('Database connection failed');
     });
   });
@@ -229,12 +240,142 @@ describe('JobsRepository', () => {
     });
   });
 
+  describe('findAllForUser', () => {
+    it('should return jobs for specified user', async () => {
+      const mockJobs = [
+        createMockJob({ id: 'job-1', prompt: 'First prompt' }),
+        createMockJob({ id: 'job-2', prompt: 'Second prompt' }),
+      ];
+      mockDb.orderBy.mockResolvedValue(mockJobs);
+
+      const result = await repository.findAllForUser('test-user-id');
+
+      expect(result).toHaveLength(2);
+      expect(result).toEqual(mockJobs);
+      expect(mockDb.select).toHaveBeenCalled();
+      expect(mockDb.from).toHaveBeenCalled();
+      expect(mockDb.where).toHaveBeenCalled();
+      expect(mockDb.orderBy).toHaveBeenCalled();
+    });
+
+    it('should return empty array when user has no jobs', async () => {
+      mockDb.orderBy.mockResolvedValue([]);
+
+      const result = await repository.findAllForUser('user-with-no-jobs');
+
+      expect(result).toEqual([]);
+    });
+
+    it('should propagate database errors', async () => {
+      mockDb.orderBy.mockRejectedValue(new Error('DB Error'));
+
+      await expect(repository.findAllForUser('test-user-id')).rejects.toThrow(
+        'DB Error',
+      );
+    });
+  });
+
+  describe('findByIdForUser', () => {
+    it('should return job when it exists and belongs to user', async () => {
+      const mockJob = createMockJob();
+      mockDb.where.mockResolvedValue([mockJob]);
+
+      const result = await repository.findByIdForUser(
+        mockJob.id,
+        'test-user-id',
+      );
+
+      expect(result).toEqual(mockJob);
+      expect(mockDb.select).toHaveBeenCalled();
+      expect(mockDb.from).toHaveBeenCalled();
+      expect(mockDb.where).toHaveBeenCalled();
+    });
+
+    it('should return undefined when job does not exist', async () => {
+      mockDb.where.mockResolvedValue([]);
+
+      const result = await repository.findByIdForUser(
+        'non-existent-id',
+        'test-user-id',
+      );
+
+      expect(result).toBeUndefined();
+    });
+
+    it('should return undefined when job belongs to different user', async () => {
+      mockDb.where.mockResolvedValue([]);
+
+      const result = await repository.findByIdForUser(
+        '123e4567-e89b-12d3-a456-426614174000',
+        'different-user-id',
+      );
+
+      expect(result).toBeUndefined();
+    });
+
+    it('should propagate database errors', async () => {
+      mockDb.where.mockRejectedValue(new Error('DB Error'));
+
+      await expect(
+        repository.findByIdForUser('id', 'test-user-id'),
+      ).rejects.toThrow('DB Error');
+    });
+  });
+
+  describe('deleteForUser', () => {
+    it('should return deleted job when it exists and belongs to user', async () => {
+      const mockJob = createMockJob();
+      mockDb.returning.mockResolvedValue([mockJob]);
+
+      const result = await repository.deleteForUser(mockJob.id, 'test-user-id');
+
+      expect(result).toEqual(mockJob);
+      expect(mockDb.delete).toHaveBeenCalled();
+      expect(mockDb.where).toHaveBeenCalled();
+      expect(mockDb.returning).toHaveBeenCalled();
+    });
+
+    it('should return undefined when job does not exist', async () => {
+      mockDb.returning.mockResolvedValue([]);
+
+      const result = await repository.deleteForUser(
+        'non-existent-id',
+        'test-user-id',
+      );
+
+      expect(result).toBeUndefined();
+    });
+
+    it('should return undefined when job belongs to different user', async () => {
+      mockDb.returning.mockResolvedValue([]);
+
+      const result = await repository.deleteForUser(
+        '123e4567-e89b-12d3-a456-426614174000',
+        'different-user-id',
+      );
+
+      expect(result).toBeUndefined();
+    });
+
+    it('should propagate database errors', async () => {
+      mockDb.returning.mockRejectedValue(new Error('Foreign key constraint'));
+
+      await expect(
+        repository.deleteForUser('id', 'test-user-id'),
+      ).rejects.toThrow('Foreign key constraint');
+    });
+  });
+
   describe('error handling', () => {
     it('should propagate errors from create', async () => {
       mockDb.returning.mockRejectedValue(new Error('DB Error'));
 
       await expect(
-        repository.create({ prompt: 'Test', status: JobStatus.PENDING }),
+        repository.create({
+          prompt: 'Test',
+          status: JobStatus.PENDING,
+          userId: 'test-user-id',
+        }),
       ).rejects.toThrow('DB Error');
     });
 

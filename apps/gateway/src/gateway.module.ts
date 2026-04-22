@@ -7,7 +7,9 @@ import { GatewayService } from './gateway.service';
 import { JobEventsController } from './controllers/job-events.controller';
 import { JobSseController } from './controllers/job-sse.controller';
 import { JobEventsService } from './services/job-events.service';
-import { DatabaseModule } from '@app/database';
+import { DatabaseModule, DatabaseService } from '@app/database';
+import { AuthModule } from '@thallesp/nestjs-better-auth';
+import { createAuth } from './auth';
 import { LoggerModule } from '@app/logger';
 import { RabbitmqModule } from '@app/rabbitmq';
 import { HealthModule } from './health/health.module';
@@ -16,10 +18,16 @@ import { CorrelationIdInterceptor } from './interceptors/correlation-id.intercep
 import { TestControlModule } from './controllers/test-control.module';
 
 /**
- * Conditionally import TestControlModule only in test mode
- * This allows Playwright E2E tests to trigger SSE events via HTTP endpoints
+ * Conditionally import TestControlModule only when explicitly enabled in test mode.
+ * Requires both NODE_ENV=test AND ENABLE_TEST_ENDPOINTS=true as a defence-in-depth
+ * measure against accidental exposure. The dedicated E2E server (e2e-server.ts)
+ * registers TestControlController directly, so this flag does not affect E2E tests.
  */
-const testModules = process.env.NODE_ENV === 'test' ? [TestControlModule] : [];
+const testModules =
+  process.env.NODE_ENV === 'test' &&
+  process.env.ENABLE_TEST_ENDPOINTS === 'true'
+    ? [TestControlModule]
+    : [];
 
 @Module({
   imports: [
@@ -33,6 +41,13 @@ const testModules = process.env.NODE_ENV === 'test' ? [TestControlModule] : [];
       ignoreErrors: false,
     }),
     DatabaseModule,
+    AuthModule.forRootAsync({
+      inject: [DatabaseService],
+      useFactory: (databaseService: DatabaseService) => ({
+        auth: createAuth(databaseService),
+        withGlobalGuard: true,
+      }),
+    }),
     LoggerModule,
     RabbitmqModule,
     HealthModule,
