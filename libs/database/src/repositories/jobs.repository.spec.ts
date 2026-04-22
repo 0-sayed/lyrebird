@@ -150,7 +150,8 @@ describe('JobsRepository', () => {
 
         const result = await repository.updateStatus(mockJob.id, toStatus);
 
-        expect(result.status).toBe(toStatus);
+        expect(result).toBeDefined();
+        expect(result?.status).toBe(toStatus);
         expect(mockDb.update).toHaveBeenCalled();
         expect(mockDb.set).toHaveBeenCalled();
         expect(mockDb.where).toHaveBeenCalled();
@@ -171,6 +172,17 @@ describe('JobsRepository', () => {
       const setArg = calls[0][0];
       expect(setArg.status).toBe(JobStatus.IN_PROGRESS);
       expect(setArg.updatedAt).toBeInstanceOf(Date);
+    });
+
+    it('should return undefined when no job matches the update', async () => {
+      mockDb.returning.mockResolvedValue([]);
+
+      const result = await repository.updateStatus(
+        '00000000-0000-0000-0000-000000000000',
+        JobStatus.COMPLETED,
+      );
+
+      expect(result).toBeUndefined();
     });
   });
 

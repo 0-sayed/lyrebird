@@ -40,7 +40,7 @@ export function MobileHeader({ isPostsSidebarVisible }: HeaderProps) {
 }
 
 /**
- * Desktop header with branding
+ * Desktop header keeps account actions visible while branding lives in AppSidebar.
  */
 export function DesktopHeader({ isPostsSidebarVisible }: HeaderProps) {
   return (
@@ -50,13 +50,6 @@ export function DesktopHeader({ isPostsSidebarVisible }: HeaderProps) {
         isPostsSidebarVisible && 'mr-96',
       )}
     >
-      <div className="flex items-center gap-2">
-        <Bird className="h-5 w-5 text-primary" />
-        <span className="font-semibold">Lyrebird</span>
-        <Badge variant="positive" className="text-[10px] mt-1 px-1.5 py-0.5">
-          BETA
-        </Badge>
-      </div>
       <div className="ml-auto">
         <UserMenu />
       </div>

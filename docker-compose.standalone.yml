@@ -19,7 +19,6 @@ services:
   # PostgreSQL with TimescaleDB Extension
   postgres:
     image: timescale/timescaledb:latest-pg16
-    container_name: lyrebird-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${DATABASE_USER:-postgres}
@@ -120,7 +119,6 @@ services:
   # RabbitMQ Message Broker
   rabbitmq:
     image: rabbitmq:4.0-management-alpine
-    container_name: lyrebird-rabbitmq
     restart: unless-stopped
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-rabbitmq}
@@ -140,7 +138,6 @@ services:
   # Redis Cache
   redis:
     image: redis:7.4-alpine
-    container_name: lyrebird-redis
     restart: unless-stopped
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-lyrebird_secure_password}
     volumes:
@@ -164,7 +161,6 @@ services:
   # Gateway Service
   gateway:
     image: ghcr.io/0-sayed/lyrebird-gateway:${LYREBIRD_VERSION:-latest}
-    container_name: lyrebird-gateway
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -200,7 +196,6 @@ services:
   # Ingestion Service
   ingestion:
     image: ghcr.io/0-sayed/lyrebird-ingestion:${LYREBIRD_VERSION:-latest}
-    container_name: lyrebird-ingestion
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -237,7 +232,6 @@ services:
   # Analysis Service
   analysis:
     image: ghcr.io/0-sayed/lyrebird-analysis:${LYREBIRD_VERSION:-latest}
-    container_name: lyrebird-analysis
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -277,7 +271,6 @@ services:
   # Dashboard Service
   dashboard:
     image: ghcr.io/0-sayed/lyrebird-dashboard:${LYREBIRD_VERSION:-latest}
-    container_name: lyrebird-dashboard
     restart: unless-stopped
     ports:
       - '${DASHBOARD_PORT:-8080}:8080'

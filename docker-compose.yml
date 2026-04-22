@@ -2,7 +2,6 @@ services:
   # PostgreSQL with TimescaleDB Extension
   postgres:
     image: timescale/timescaledb:latest-pg16
-    container_name: lyrebird-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${DATABASE_USER}
@@ -10,7 +9,7 @@ services:
       POSTGRES_DB: ${DATABASE_NAME}
       POSTGRES_INITDB_ARGS: '-A md5'
     ports:
-      - '${DATABASE_PORT}:5432'
+      - '${DATABASE_PORT:-5432}:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init.sql
@@ -25,15 +24,14 @@ services:
   # RabbitMQ Message Broker
   rabbitmq:
     image: rabbitmq:4.0-management-alpine
-    container_name: lyrebird-rabbitmq
     restart: unless-stopped
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
       RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST}
     ports:
-      - '${RABBITMQ_PORT}:5672' # AMQP port
-      - '${RABBITMQ_MANAGEMENT_PORT}:15672' # Management UI
+      - '${RABBITMQ_PORT:-5672}:5672' # AMQP port
+      - '${RABBITMQ_MANAGEMENT_PORT:-15672}:15672' # Management UI
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
@@ -48,11 +46,10 @@ services:
   # Redis Cache
   redis:
     image: redis:7.4-alpine
-    container_name: lyrebird-redis
     restart: unless-stopped
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
     ports:
-      - '${REDIS_PORT}:6379'
+      - '${REDIS_PORT:-6379}:6379'
     volumes:
       - redis_data:/data
     healthcheck:

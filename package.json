@@ -47,6 +47,8 @@
     "test:e2e": "jest --config ./apps/gateway/test/jest-e2e.json",
     "test:e2e:all": "jest --config ./apps/gateway/test/jest-e2e.json && jest --config ./apps/analysis/test/jest-e2e.json && jest --config ./apps/ingestion/test/jest-e2e.json",
     "test:e2e:server": "NODE_ENV=test npx ts-node -r tsconfig-paths/register apps/gateway/test/e2e-server.ts",
+    "test:integration": "jest --config jest.integration.config.ts",
+    "test:integration:watch": "jest --config jest.integration.config.ts --watch",
     "test:ci": "jest --coverage --ci --maxWorkers=2",
     "validate": "pnpm lint && pnpm type-check && pnpm test && pnpm knip && pnpm build",
     "type-check": "tsc --noEmit && pnpm --filter dashboard type-check",
@@ -137,10 +139,11 @@
       "ts"
     ],
     "rootDir": ".",
-    "testRegex": ".*\\.(spec|integration\\.spec)\\.ts$",
+    "testRegex": ".*\\.spec\\.ts$",
     "testPathIgnorePatterns": [
       "/node_modules/",
-      "/apps/dashboard/e2e/"
+      "/apps/dashboard/e2e/",
+      ".*\\.integration\\.spec\\.ts$"
     ],
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
@@ -160,6 +163,7 @@
       "!**/*.spec.ts",
       "!**/*.e2e-spec.ts",
       "!**/*.integration.spec.ts",
+      "!**/*-integration.spec.ts",
       "!**/health/**",
       "!**/filters/**",
       "!**/interceptors/**",

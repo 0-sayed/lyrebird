@@ -1,0 +1,21 @@
+{
+  "envOverrides": {
+    "DATABASE_HOST": "localhost",
+    "DATABASE_USER": "postgres",
+    "DATABASE_PASSWORD": "postgres",
+    "DATABASE_NAME": "lyrebird",
+    "GATEWAY_PORT": "3000",
+    "INGESTION_PORT": "3001",
+    "ANALYSIS_PORT": "3002",
+    "RABBITMQ_HOST": "localhost",
+    "RABBITMQ_USER": "rabbitmq",
+    "RABBITMQ_PASSWORD": "rabbitmq",
+    "RABBITMQ_VHOST": "/",
+    "REDIS_HOST": "localhost",
+    "REDIS_PASSWORD": "redis",
+    "REDIS_URL": "redis://:redis@localhost:${REDIS_PORT}",
+    "VITE_PORT": "5173",
+    "VITE_API_PORT": "3000",
+    "CORS_ORIGIN": "http://localhost:5173"
+  }
+}
