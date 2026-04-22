@@ -8,6 +8,7 @@ import * as schema from '../schema';
 const TEST_DATABASE_NAME_PATTERN = /(^|_)test$/i;
 const DEFAULT_TEST_DATABASE_NAME = 'lyrebird_test';
 const TEST_ENV_PATH = path.resolve(process.cwd(), '.env.test');
+const DEFAULT_TEST_USER_ID = 'test-user-id';
 
 function loadTestEnvironment(envPath: string): void {
   if (!existsSync(envPath)) return;
@@ -81,6 +82,24 @@ export class TestDatabaseService {
     this._db = drizzle(this.pool, { schema });
   }
 
+  private async ensureDefaultTestUser(): Promise<void> {
+    if (!this._db) {
+      throw new Error('Database not initialized. Call connect() first.');
+    }
+
+    await this._db
+      .insert(schema.user)
+      .values({
+        id: DEFAULT_TEST_USER_ID,
+        name: 'Test User',
+        email: 'test-user@example.com',
+        emailVerified: true,
+        image: null,
+        updatedAt: new Date(),
+      })
+      .onConflictDoNothing();
+  }
+
   /**
    * Close the database connection pool.
    */
@@ -111,6 +130,7 @@ export class TestDatabaseService {
     if (!this._db) return;
     this.assertSafeTestDatabaseConfig();
     await this._db.execute(sql`TRUNCATE TABLE sentiment_data, jobs CASCADE`);
+    await this.ensureDefaultTestUser();
   }
 }
 
