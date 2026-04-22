@@ -25,20 +25,10 @@ export function MobileHeader() {
 }
 
 /**
- * Desktop header with branding
+ * Desktop header — branding lives in AppSidebar; nothing needed here.
  */
 export function DesktopHeader() {
-  return (
-    <header className="sticky top-0 z-40 hidden h-14 items-center gap-4 border-b bg-background px-4 md:flex">
-      <div className="flex items-center gap-2">
-        <Bird className="h-5 w-5 text-primary" />
-        <span className="font-semibold">Lyrebird</span>
-        <Badge variant="positive" className="text-[10px] mt-1 px-1.5 py-0.5">
-          BETA
-        </Badge>
-      </div>
-    </header>
-  );
+  return null;
 }
 
 /**

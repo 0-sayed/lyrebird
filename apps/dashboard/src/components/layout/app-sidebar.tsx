@@ -1,5 +1,6 @@
-import { Menu, PlusCircle } from 'lucide-react';
+import { Bird, Menu, PlusCircle } from 'lucide-react';
 
+import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import {
   Sidebar,
@@ -43,17 +44,26 @@ export function AppSidebar({
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader>
+      <SidebarHeader className="pb-2">
+        <div className="flex items-center justify-between px-2 py-1 group-data-[collapsible=icon]:justify-center">
+          <div className="flex items-center gap-2 overflow-hidden group-data-[collapsible=icon]:hidden">
+            <Bird className="h-[18px] w-[18px] shrink-0 text-primary" />
+            <span className="text-sm font-semibold tracking-tight">
+              Lyrebird
+            </span>
+            <Badge variant="positive" className="h-4 px-1.5 py-0 text-[9px]">
+              BETA
+            </Badge>
+          </div>
+          <SidebarMenuButton
+            size="sm"
+            onClick={toggleSidebar}
+            className="aspect-square w-8 justify-center rounded-full p-0"
+          >
+            <Menu className="h-4 w-4" />
+          </SidebarMenuButton>
+        </div>
         <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              size="default"
-              onClick={toggleSidebar}
-              className="aspect-square w-9 justify-center rounded-full p-0"
-            >
-              <Menu className="h-7 w-7" />
-            </SidebarMenuButton>
-          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
               onClick={handleNewChat}
