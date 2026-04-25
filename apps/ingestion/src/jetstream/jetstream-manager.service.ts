@@ -10,6 +10,7 @@ import {
   JetstreamConnectionStatus,
   JetstreamMetrics,
 } from '@app/bluesky';
+import { RabbitmqService, RABBITMQ_CONSTANTS } from '@app/rabbitmq';
 import { RawDataMessage } from '@app/shared-types';
 import { JobRegistryService, RegisterJobConfig } from './job-registry.service';
 import { KeywordFilterService } from './keyword-filter.service';
@@ -112,6 +113,7 @@ export class JetstreamManagerService implements OnModuleInit, OnModuleDestroy {
     private readonly jetstreamClient: JetstreamClientService,
     private readonly jobRegistry: JobRegistryService,
     private readonly keywordFilter: KeywordFilterService,
+    private readonly rabbitmqService: RabbitmqService,
   ) {
     this.logger.log('JetstreamManager initialized');
   }
@@ -370,9 +372,9 @@ export class JetstreamManagerService implements OnModuleInit, OnModuleDestroy {
         this.logger.log(`Jetstream connection status: ${status}`);
 
         // Log additional context for specific states
-        if (status === 'error') {
+        if (status === 'exhausted') {
           this.logger.warn(
-            `Jetstream connection error. Active jobs: ${this.jobRegistry.getActiveJobCount()}`,
+            `Jetstream reconnects exhausted. Active jobs: ${this.jobRegistry.getActiveJobCount()}`,
           );
         } else if (status === 'reconnecting') {
           const metrics = this.jetstreamClient.getMetrics();
@@ -393,7 +395,7 @@ export class JetstreamManagerService implements OnModuleInit, OnModuleDestroy {
     }
 
     this.metricsInterval = setInterval(() => {
-      this.logMetrics();
+      void this.logMetrics();
     }, JETSTREAM_CONSTANTS.METRICS_LOG_INTERVAL_MS);
   }
 
@@ -410,7 +412,7 @@ export class JetstreamManagerService implements OnModuleInit, OnModuleDestroy {
   /**
    * Log current processing metrics
    */
-  private logMetrics(): void {
+  private async logMetrics(): Promise<void> {
     const clientMetrics = this.jetstreamClient.getMetrics();
     const matchStats = this.keywordFilter.getMatchStats();
 
@@ -429,6 +431,31 @@ export class JetstreamManagerService implements OnModuleInit, OnModuleDestroy {
         .join(', ');
       this.logger.debug(`[Job Matches] ${jobSummary}`);
     }
+
+    try {
+      const status = await this.rabbitmqService.getBackpressureStatus(
+        RABBITMQ_CONSTANTS.QUEUES.ANALYSIS,
+        this.getBackpressureThreshold(),
+      );
+
+      if (status.isBackpressured) {
+        this.logger.warn(
+          `[Backpressure] queue=${status.queue} messages=${status.messageCount} threshold=${status.threshold}`,
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        'Failed to check RabbitMQ backpressure during metrics polling',
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
+  }
+
+  private getBackpressureThreshold(): number {
+    const rawThreshold = process.env.RABBITMQ_BACKPRESSURE_THRESHOLD ?? '100';
+    const threshold = Number(rawThreshold);
+
+    return Number.isFinite(threshold) ? threshold : 100;
   }
 
   /**
@@ -447,6 +474,7 @@ export class JetstreamManagerService implements OnModuleInit, OnModuleDestroy {
 
     // Reconnect if we have active jobs
     if (this.jobRegistry.hasActiveJobs()) {
+      this.jetstreamClient.resetReconnectState();
       await this.jetstreamClient.connect();
       this.logger.log('Reconnected to Jetstream');
     } else {

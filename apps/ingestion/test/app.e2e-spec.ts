@@ -90,6 +90,135 @@ describe('IngestionController (e2e)', () => {
         expect(res.body).toHaveProperty('service', 'ingestion');
       });
   });
+
+  describe('/health/ready (GET)', () => {
+    beforeEach(() => {
+      mockJetstreamManager.getStatus.mockReturnValue({
+        isListening: true,
+        connectionStatus: 'connected',
+        activeJobCount: 1,
+        metrics: {
+          messagesReceived: 0,
+          messagesPerSecond: 0,
+          postsProcessed: 0,
+          connectionStatus: 'connected',
+          reconnectAttempts: 0,
+          exhaustedAt: undefined,
+        },
+      });
+      mockRabbitmqService.getHealthStatus.mockResolvedValue({
+        healthy: true,
+        connected: true,
+        initializedQueues: [],
+      });
+      mockDatabaseService.getHealthStatus.mockResolvedValue({
+        healthy: true,
+        latencyMs: 0,
+      });
+    });
+
+    it('returns the readiness success shape when dependencies are healthy', async () => {
+      await request(app.getHttpServer() as App)
+        .get('/health/ready')
+        .expect(200)
+        .expect((res) => {
+          expect(res.body).toEqual(
+            expect.objectContaining({
+              status: 'ready',
+              service: 'ingestion',
+              checks: {
+                jetstream: { status: 'connected' },
+                rabbitmq: { status: 'connected' },
+                database: { status: 'connected' },
+              },
+            }),
+          );
+        });
+    });
+
+    it('returns 503 when RabbitMQ is unhealthy', async () => {
+      mockRabbitmqService.getHealthStatus.mockResolvedValueOnce({
+        healthy: false,
+        connected: false,
+        initializedQueues: [],
+      });
+
+      await request(app.getHttpServer() as App)
+        .get('/health/ready')
+        .expect(503)
+        .expect((res) => {
+          expect(res.body).toEqual(
+            expect.objectContaining({
+              status: 'not_ready',
+              service: 'ingestion',
+              checks: {
+                jetstream: { status: 'connected' },
+                rabbitmq: { status: 'disconnected' },
+                database: { status: 'connected' },
+              },
+            }),
+          );
+        });
+    });
+
+    it('returns 503 when Postgres is unhealthy', async () => {
+      mockDatabaseService.getHealthStatus.mockResolvedValueOnce({
+        healthy: false,
+        latencyMs: 3,
+        error: 'connection refused',
+      });
+
+      await request(app.getHttpServer() as App)
+        .get('/health/ready')
+        .expect(503)
+        .expect((res) => {
+          expect(res.body).toEqual(
+            expect.objectContaining({
+              status: 'not_ready',
+              service: 'ingestion',
+              checks: {
+                jetstream: { status: 'connected' },
+                rabbitmq: { status: 'connected' },
+                database: { status: 'disconnected' },
+              },
+            }),
+          );
+        });
+    });
+
+    it('returns 503 when Jetstream is exhausted', async () => {
+      mockJetstreamManager.getStatus.mockReturnValueOnce({
+        isListening: false,
+        connectionStatus: 'exhausted',
+        activeJobCount: 0,
+        metrics: {
+          messagesReceived: 0,
+          messagesPerSecond: 0,
+          postsProcessed: 0,
+          connectionStatus: 'exhausted',
+          reconnectAttempts: 0,
+          exhaustedAt: new Date().toISOString(),
+        },
+      });
+
+      await request(app.getHttpServer() as App)
+        .get('/health/ready')
+        .expect(503)
+        .expect((res) => {
+          expect(res.body).toEqual(
+            expect.objectContaining({
+              status: 'not_ready',
+              service: 'ingestion',
+              checks: {
+                jetstream: { status: 'exhausted' },
+                rabbitmq: { status: 'connected' },
+                database: { status: 'connected' },
+              },
+            }),
+          );
+        });
+    });
+  });
 });
 
 describe('IngestionService E2E', () => {

@@ -1,7 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { JetstreamClientService } from './jetstream-client.service';
-import { JetstreamCommitEvent, JetstreamPostEvent } from './jetstream-types';
+import {
+  JetstreamCommitEvent,
+  JetstreamConnectionStatus,
+  JetstreamPostEvent,
+} from './jetstream-types';
 import WebSocket from 'ws';
 import {
   createMockWebSocketInstance,
@@ -87,7 +91,6 @@ describe('JetstreamClientService', () => {
   let service: JetstreamClientService;
   let module: TestingModule;
   let mockWs: MockWebSocketInstance;
-
   beforeEach(async () => {
     jest.clearAllMocks();
     jest.useFakeTimers();
@@ -151,6 +154,15 @@ describe('JetstreamClientService', () => {
       await connectAndOpen(service, mockWs);
 
       expect(service.getMetrics().reconnectAttempts).toBe(0);
+    });
+
+    it('should emit the latest connection state to new subscribers', async () => {
+      await connectAndOpen(service, mockWs);
+
+      const statuses: JetstreamConnectionStatus[] = [];
+      service.status$.subscribe((status) => statuses.push(status));
+
+      expect(statuses.at(-1)).toBe('connected');
     });
   });
 
@@ -284,6 +296,47 @@ describe('JetstreamClientService', () => {
   });
 
   describe('reconnection with exponential backoff', () => {
+    it('should follow the connection state machine path to exhaustion', async () => {
+      const result = await createModule({
+        JETSTREAM_RECONNECT_MAX_ATTEMPTS: 1,
+        JETSTREAM_RECONNECT_INITIAL_BACKOFF_MS: 5000,
+        JETSTREAM_RECONNECT_MAX_BACKOFF_MS: 5000,
+      });
+      await module.close();
+
+      module = result.module;
+      service = result.service;
+      mockWs = result.mockWs;
+
+      const statuses: JetstreamConnectionStatus[] = [];
+      service.status$.subscribe((status) => statuses.push(status));
+
+      const connectPromise = service.connect();
+      expect(service.getConnectionStatus()).toBe('connecting');
+
+      mockWs._triggerOpen();
+      await connectPromise;
+      expect(service.getConnectionStatus()).toBe('connected');
+
+      mockWs._triggerClose(1006, 'Abnormal closure');
+      expect(service.getConnectionStatus()).toBe('reconnecting');
+
+      jest.advanceTimersByTime(7000);
+      expect(service.getConnectionStatus()).toBe('connecting');
+
+      mockWs._triggerError(new Error('Reconnect failed'));
+      expect(service.getConnectionStatus()).toBe('exhausted');
+
+      expect(statuses).toEqual([
+        'disconnected',
+        'connecting',
+        'connected',
+        'reconnecting',
+        'connecting',
+        'exhausted',
+      ]);
+    });
+
     it('should schedule reconnection on connection close', async () => {
       await connectAndOpen(service, mockWs);
 
@@ -305,7 +358,7 @@ describe('JetstreamClientService', () => {
       expect(MockWebSocket).toHaveBeenCalledTimes(1);
 
       // Advance past backoff (100ms + up to 25% jitter = max 125ms)
-      jest.advanceTimersByTime(150);
+      jest.advanceTimersByTime(200);
 
       // Now should have attempted reconnection
       expect(MockWebSocket).toHaveBeenCalledTimes(2);
@@ -319,7 +372,7 @@ describe('JetstreamClientService', () => {
       expect(service.getMetrics().reconnectAttempts).toBe(1);
 
       // Advance time so reconnect is attempted
-      jest.advanceTimersByTime(150);
+      jest.advanceTimersByTime(200);
       // Now connected again, but simulate another close immediately
       // Note: reconnectAttempts is reset to 0 on successful open, so we need to check
       // the count before open is triggered
@@ -328,18 +381,54 @@ describe('JetstreamClientService', () => {
       expect(service.getConnectionStatus()).toBe('connecting');
     });
 
-    it('should stop reconnecting after max attempts and set status to error', async () => {
+    it('should transition to exhausted after max reconnect attempts', async () => {
+      const result = await createModule({
+        JETSTREAM_RECONNECT_MAX_ATTEMPTS: 3,
+        JETSTREAM_RECONNECT_INITIAL_BACKOFF_MS: 5000,
+        JETSTREAM_RECONNECT_MAX_BACKOFF_MS: 5000,
+      });
+      await module.close();
+
+      module = result.module;
+      service = result.service;
+      mockWs = result.mockWs;
+
       await connectAndOpen(service, mockWs);
 
-      // Trigger max attempts (3) worth of failures
       for (let i = 0; i < 4; i++) {
         mockWs._triggerClose(1006, 'Abnormal closure');
-        jest.advanceTimersByTime(2000); // Enough time for backoff
+        jest.advanceTimersByTime(7000);
       }
 
-      // Should have given up and set status to error
-      expect(service.getConnectionStatus()).toBe('error');
+      expect(service.getConnectionStatus()).toBe('exhausted');
       expect(service.isMaxReconnectExhausted()).toBe(true);
+      expect(service.getMetrics().exhaustedAt).toBeInstanceOf(Date);
+    });
+
+    it('should not schedule another reconnect once exhausted', async () => {
+      const result = await createModule({
+        JETSTREAM_RECONNECT_MAX_ATTEMPTS: 3,
+        JETSTREAM_RECONNECT_INITIAL_BACKOFF_MS: 5000,
+        JETSTREAM_RECONNECT_MAX_BACKOFF_MS: 5000,
+      });
+      await module.close();
+
+      module = result.module;
+      service = result.service;
+      mockWs = result.mockWs;
+
+      await connectAndOpen(service, mockWs);
+
+      for (let i = 0; i < 4; i++) {
+        mockWs._triggerClose(1006, 'Abnormal closure');
+        jest.advanceTimersByTime(7000);
+      }
+      const callsAfterExhaustion = MockWebSocket.mock.calls.length;
+
+      mockWs._triggerClose(1006, 'Still closed');
+      jest.advanceTimersByTime(60000);
+
+      expect(MockWebSocket).toHaveBeenCalledTimes(callsAfterExhaustion);
     });
 
     it('should preserve cursor across reconnections', async () => {
@@ -352,7 +441,7 @@ describe('JetstreamClientService', () => {
 
       // Trigger reconnection
       mockWs._triggerClose(1006, 'Abnormal closure');
-      jest.advanceTimersByTime(150);
+      jest.advanceTimersByTime(200);
 
       // Verify cursor is preserved in reconnection URL
       const calls = MockWebSocket.mock.calls;
@@ -365,7 +454,7 @@ describe('JetstreamClientService', () => {
 
       // Trigger close and reconnect
       mockWs._triggerClose(1006, 'Abnormal closure');
-      jest.advanceTimersByTime(150);
+      jest.advanceTimersByTime(200);
 
       // Simulate successful reconnection
       mockWs._triggerOpen();
@@ -375,28 +464,84 @@ describe('JetstreamClientService', () => {
   });
 
   describe('error handling', () => {
-    it('should set status to error on WebSocket error', async () => {
+    it('should schedule reconnect after error during established connection', async () => {
       await connectAndOpen(service, mockWs);
 
       mockWs._triggerError(new Error('Connection error'));
 
-      expect(service.getConnectionStatus()).toBe('error');
+      expect(service.getConnectionStatus()).toBe('reconnecting');
+
+      jest.advanceTimersByTime(200);
+
+      expect(MockWebSocket).toHaveBeenCalledTimes(2);
     });
 
-    it('should schedule reconnect after error during established connection', async () => {
+    it('should not consume multiple reconnect attempts for one error-close sequence', async () => {
       await connectAndOpen(service, mockWs);
 
-      // Trigger error on established connection
-      mockWs._triggerError(new Error('Network timeout'));
+      mockWs._triggerError(new Error('Connection error'));
+      mockWs._triggerClose(1006, 'Abnormal closure');
 
-      // Error sets status to error
-      expect(service.getConnectionStatus()).toBe('error');
-
-      // Close follows error, triggering reconnection
-      mockWs._triggerClose(1006, 'Network timeout');
-
-      // Now should be reconnecting
       expect(service.getConnectionStatus()).toBe('reconnecting');
+      expect(service.getMetrics().reconnectAttempts).toBe(1);
+
+      jest.advanceTimersByTime(200);
+
+      expect(MockWebSocket).toHaveBeenCalledTimes(2);
+    });
+
+    it('should not schedule reconnect from error once exhausted', async () => {
+      const result = await createModule({
+        JETSTREAM_RECONNECT_MAX_ATTEMPTS: 1,
+        JETSTREAM_RECONNECT_INITIAL_BACKOFF_MS: 5000,
+        JETSTREAM_RECONNECT_MAX_BACKOFF_MS: 5000,
+      });
+      await module.close();
+
+      module = result.module;
+      service = result.service;
+      mockWs = result.mockWs;
+
+      await connectAndOpen(service, mockWs);
+      mockWs._triggerClose(1006, 'Abnormal closure');
+      jest.advanceTimersByTime(7000);
+      mockWs._triggerError(new Error('Reconnect failed'));
+      jest.advanceTimersByTime(7000);
+
+      const callsAfterExhaustion = MockWebSocket.mock.calls.length;
+      mockWs._triggerError(new Error('Still failing'));
+      jest.advanceTimersByTime(60000);
+
+      expect(service.getConnectionStatus()).toBe('exhausted');
+      expect(MockWebSocket).toHaveBeenCalledTimes(callsAfterExhaustion);
+    });
+  });
+
+  describe('resetReconnectState', () => {
+    it('should return to disconnected and clear exhaustion metadata', async () => {
+      const result = await createModule({
+        JETSTREAM_RECONNECT_MAX_ATTEMPTS: 1,
+        JETSTREAM_RECONNECT_INITIAL_BACKOFF_MS: 5000,
+        JETSTREAM_RECONNECT_MAX_BACKOFF_MS: 5000,
+      });
+      await module.close();
+
+      module = result.module;
+      service = result.service;
+      mockWs = result.mockWs;
+
+      await connectAndOpen(service, mockWs);
+      mockWs._triggerClose(1006, 'Abnormal closure');
+      jest.advanceTimersByTime(7000);
+      mockWs._triggerError(new Error('Reconnect failed'));
+      jest.advanceTimersByTime(7000);
+
+      service.resetReconnectState();
+
+      expect(service.getConnectionStatus()).toBe('disconnected');
+      expect(service.isMaxReconnectExhausted()).toBe(false);
+      expect(service.getMetrics().reconnectAttempts).toBe(0);
+      expect(service.getMetrics().exhaustedAt).toBeUndefined();
     });
   });
 
@@ -404,7 +549,6 @@ describe('JetstreamClientService', () => {
     it.each([
       [WS_READY_STATES.CONNECTING, 'connecting'],
       [WS_READY_STATES.OPEN, 'connected'],
-      [WS_READY_STATES.CLOSING, 'disconnecting'],
       [WS_READY_STATES.CLOSED, 'disconnected'],
     ] as const)(
       'should report status %s as %s',
@@ -412,9 +556,12 @@ describe('JetstreamClientService', () => {
         await connectAndOpen(service, mockWs);
         mockWs._setReadyState(readyState);
 
-        // The service caches status internally, so we need to trigger a status check
-        // For OPEN state, it should already be connected
         if (readyState === WS_READY_STATES.OPEN) {
+          expect(service.getConnectionStatus()).toBe(expectedStatus);
+        }
+
+        if (readyState === WS_READY_STATES.CLOSED) {
+          service.resetReconnectState();
           expect(service.getConnectionStatus()).toBe(expectedStatus);
         }
       },

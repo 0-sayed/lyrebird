@@ -11,6 +11,12 @@ import { Pool } from 'pg';
 import * as path from 'path';
 import * as schema from './schema';
 
+export interface PostgresHealthStatus {
+  healthy: boolean;
+  latencyMs: number;
+  error?: string;
+}
+
 @Injectable()
 export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(DatabaseService.name);
@@ -91,13 +97,27 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   /**
    * Health check - test database connection
    */
-  async healthCheck(): Promise<boolean> {
+  async getHealthStatus(): Promise<PostgresHealthStatus> {
+    const startedAt = Date.now();
+
     try {
       await this.pool.query('SELECT 1');
-      return true;
+      return {
+        healthy: true,
+        latencyMs: Date.now() - startedAt,
+      };
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       this.logger.error('Database health check failed', error);
-      return false;
+      return {
+        healthy: false,
+        latencyMs: Date.now() - startedAt,
+        error: message,
+      };
     }
+  }
+
+  async healthCheck(): Promise<boolean> {
+    return (await this.getHealthStatus()).healthy;
   }
 }

@@ -11,6 +11,8 @@ import {
   Transport,
   RmqOptions,
 } from '@nestjs/microservices';
+import { connect } from 'amqplib';
+import type { Channel, ChannelModel } from 'amqplib';
 import { lastValueFrom } from 'rxjs';
 import {
   RABBITMQ_CONSTANTS,
@@ -19,12 +21,31 @@ import {
   getQueueForPattern,
 } from './rabbitmq.constants';
 
+export interface RabbitmqHealthStatus {
+  healthy: boolean;
+  connected: boolean;
+  initializedQueues: string[];
+  lastError?: string;
+}
+
+export interface RabbitmqBackpressureStatus {
+  queue: string;
+  messageCount: number;
+  consumerCount: number;
+  threshold: number;
+  isBackpressured: boolean;
+}
+
 @Injectable()
 export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RabbitmqService.name);
 
   // Map of queue name -> ClientProxy
   private clients: Map<string, ClientProxy> = new Map();
+  private monitorConnection?: ChannelModel;
+  private monitorChannel?: Pick<Channel, 'checkQueue' | 'close'>;
+  private monitorConnected = false;
+  private lastMonitorError?: string;
 
   constructor(private configService: ConfigService) {}
 
@@ -52,6 +73,7 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
       });
 
       await Promise.all(connectionPromises);
+      await this.initializeMonitor(url);
 
       this.logger.log(
         `RabbitMQ connected successfully (${queues.length} queues)`,
@@ -72,17 +94,25 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
     try {
       this.logger.log('Closing RabbitMQ connections...');
 
-      const closingPromises = Array.from(this.clients.entries()).map(
-        async ([queue, client]) => {
+      const closeResults = await Promise.allSettled(
+        Array.from(this.clients.entries()).map(async ([queue, client]) => {
           await client.close();
           this.logger.debug(`Closed connection to queue: ${queue}`);
-        },
+        }),
       );
-
-      await Promise.all(closingPromises);
+      await this.closeMonitor();
 
       this.clients.clear();
       this.logger.log('All RabbitMQ connections closed');
+
+      const closeErrors = closeResults.filter(
+        (result): result is PromiseRejectedResult =>
+          result.status === 'rejected',
+      );
+
+      if (closeErrors.length > 0) {
+        throw closeErrors[0].reason;
+      }
     } catch (error) {
       this.logger.error(
         'Error closing RabbitMQ connections',
@@ -187,21 +217,9 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
   /**
    * Health check - verify RabbitMQ connections are actually active
    */
-  async healthCheck(): Promise<boolean> {
+  healthCheck(): boolean {
     try {
-      if (this.clients.size === 0) {
-        return false;
-      }
-
-      // Verify each client is actually connected by checking internal state
-      const checkPromises = Array.from(this.clients.values()).map((client) => {
-        // ClientProxy doesn't expose connection state directly,
-        // but we can verify it was successfully connected during init
-        return Promise.resolve(client !== null && client !== undefined);
-      });
-
-      const results = await Promise.all(checkPromises);
-      return results.every((isConnected) => isConnected);
+      return this.getHealthStatus().healthy;
     } catch (error) {
       this.logger.error(
         'RabbitMQ health check failed',
@@ -209,6 +227,98 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
       );
       return false;
     }
+  }
+
+  getHealthStatus(): RabbitmqHealthStatus {
+    const initializedQueues = Array.from(this.clients.keys());
+    const expectedQueues = Object.values(RABBITMQ_CONSTANTS.QUEUES);
+    const allExpectedQueuesInitialized = expectedQueues.every((queue) =>
+      this.clients.has(queue),
+    );
+    const connected =
+      this.monitorConnected &&
+      this.monitorConnection !== undefined &&
+      this.monitorChannel !== undefined;
+
+    return {
+      healthy: connected && allExpectedQueuesInitialized,
+      connected,
+      initializedQueues,
+      ...(this.lastMonitorError
+        ? { lastError: this.lastMonitorError }
+        : undefined),
+    };
+  }
+
+  async getBackpressureStatus(
+    queue: string,
+    threshold = 100,
+  ): Promise<RabbitmqBackpressureStatus> {
+    if (!this.monitorConnected || !this.monitorChannel) {
+      return this.createUnavailableBackpressureStatus(queue, threshold);
+    }
+
+    try {
+      const queueStatus = await this.monitorChannel.checkQueue(queue);
+
+      return {
+        queue,
+        messageCount: queueStatus.messageCount,
+        consumerCount: queueStatus.consumerCount,
+        threshold,
+        isBackpressured: queueStatus.messageCount >= threshold,
+      };
+    } catch (error) {
+      this.lastMonitorError =
+        error instanceof Error ? error.message : String(error);
+      return this.createUnavailableBackpressureStatus(queue, threshold);
+    }
+  }
+
+  private async initializeMonitor(url: string): Promise<void> {
+    this.monitorConnection = await connect(url);
+    this.monitorChannel = await this.monitorConnection.createChannel();
+    this.monitorConnected = true;
+    this.lastMonitorError = undefined;
+
+    this.monitorConnection.on('close', () => {
+      this.handleMonitorDisconnect();
+    });
+    this.monitorConnection.on('error', (error: unknown) => {
+      this.handleMonitorDisconnect(error instanceof Error ? error : undefined);
+    });
+  }
+
+  private handleMonitorDisconnect(error?: Error): void {
+    this.monitorConnected = false;
+    this.monitorChannel = undefined;
+    this.lastMonitorError =
+      error?.message ?? 'RabbitMQ monitor connection closed';
+  }
+
+  private async closeMonitor(): Promise<void> {
+    const channel = this.monitorChannel;
+    const connection = this.monitorConnection;
+    this.monitorChannel = undefined;
+    this.monitorConnection = undefined;
+    this.monitorConnected = false;
+    this.lastMonitorError = undefined;
+
+    await channel?.close();
+    await connection?.close();
+  }
+
+  private createUnavailableBackpressureStatus(
+    queue: string,
+    threshold: number,
+  ): RabbitmqBackpressureStatus {
+    return {
+      queue,
+      messageCount: -1,
+      consumerCount: 0,
+      threshold,
+      isBackpressured: true,
+    };
   }
 
   /**

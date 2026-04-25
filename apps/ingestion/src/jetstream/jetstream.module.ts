@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { BlueskyModule } from '@app/bluesky';
+import { RabbitmqModule } from '@app/rabbitmq';
 import { JobRegistryService } from './job-registry.service';
 import { KeywordFilterService } from './keyword-filter.service';
 import { JetstreamManagerService } from './jetstream-manager.service';
@@ -42,7 +43,7 @@ import { JetstreamManagerService } from './jetstream-manager.service';
  * ```
  */
 @Module({
-  imports: [ConfigModule, BlueskyModule],
+  imports: [ConfigModule, BlueskyModule, RabbitmqModule],
   providers: [
     JobRegistryService,
     KeywordFilterService,
