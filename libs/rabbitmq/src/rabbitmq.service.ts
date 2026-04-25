@@ -105,13 +105,13 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
     try {
       this.logger.log('Closing RabbitMQ connections...');
 
-      const closeResults = await Promise.allSettled(
-        Array.from(this.clients.entries()).map(async ([queue, client]) => {
+      const closeResults = await Promise.allSettled([
+        ...Array.from(this.clients.entries()).map(async ([queue, client]) => {
           await client.close();
           this.logger.debug(`Closed connection to queue: ${queue}`);
         }),
-      );
-      await this.closeMonitor();
+        this.closeMonitor(),
+      ]);
 
       this.clients.clear();
       this.logger.log('All RabbitMQ connections closed');
@@ -291,17 +291,26 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async initializeMonitor(url: string): Promise<void> {
-    this.monitorConnection = await connect(url);
-    this.monitorChannel = await this.monitorConnection.createChannel();
-    this.monitorConnected = true;
-    this.lastMonitorError = undefined;
-
-    this.monitorConnection.on('close', () => {
+    const connection = await connect(url);
+    connection.on('close', () => {
       this.handleMonitorDisconnect();
     });
-    this.monitorConnection.on('error', (error: unknown) => {
+    connection.on('error', (error: unknown) => {
       this.handleMonitorDisconnect(error instanceof Error ? error : undefined);
     });
+
+    let channel: Pick<Channel, 'checkQueue' | 'close'>;
+    try {
+      channel = await connection.createChannel();
+    } catch (error) {
+      await connection.close().catch(() => undefined);
+      throw error;
+    }
+
+    this.monitorConnection = connection;
+    this.monitorChannel = channel;
+    this.monitorConnected = true;
+    this.lastMonitorError = undefined;
   }
 
   private async ensureMonitorConnected(): Promise<void> {
@@ -343,14 +352,19 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async closeMonitor(): Promise<void> {
+    this.monitorUrl = undefined;
+    this.monitorConnected = false;
+    this.lastMonitorError = undefined;
+
+    const reconnectPromise = this.monitorReconnectPromise;
+    this.monitorReconnectPromise = undefined;
+    await reconnectPromise?.catch(() => undefined);
+    this.monitorConnected = false;
+
     const channel = this.monitorChannel;
     const connection = this.monitorConnection;
     this.monitorChannel = undefined;
     this.monitorConnection = undefined;
-    this.monitorUrl = undefined;
-    this.monitorReconnectPromise = undefined;
-    this.monitorConnected = false;
-    this.lastMonitorError = undefined;
 
     try {
       await channel?.close();

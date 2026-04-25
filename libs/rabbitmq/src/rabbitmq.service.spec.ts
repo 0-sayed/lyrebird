@@ -568,6 +568,27 @@ describe('RabbitmqService', () => {
 
       expect(freshService.isInitialized()).toBe(true);
     });
+
+    it('should close the monitor connection when channel creation fails', async () => {
+      const monitorConnection = createMockAmqpConnection();
+      monitorConnection.createChannel.mockRejectedValueOnce(
+        new Error('channel unavailable'),
+      );
+      jest
+        .spyOn(ClientProxyFactory, 'create')
+        .mockReturnValue(createMockClientProxy());
+      jest
+        .mocked(amqplib.connect)
+        .mockResolvedValueOnce(
+          monitorConnection as unknown as Awaited<
+            ReturnType<typeof amqplib.connect>
+          >,
+        );
+
+      await expect(freshService.onModuleInit()).resolves.toBeUndefined();
+
+      expect(monitorConnection.close).toHaveBeenCalled();
+    });
   });
 
   describe('onModuleDestroy', () => {
@@ -619,7 +640,7 @@ describe('RabbitmqService', () => {
       mockIngestionClient.close.mockRejectedValue(new Error('Close failed'));
 
       // Should not throw
-      await expect(service.onModuleDestroy()).resolves.not.toThrow();
+      await expect(service.onModuleDestroy()).resolves.toBeUndefined();
       expect(monitorChannel.close).toHaveBeenCalled();
       expect(monitorConnection.close).toHaveBeenCalled();
     });
@@ -634,10 +655,51 @@ describe('RabbitmqService', () => {
         connection: monitorConnection,
       });
 
-      await expect(service.onModuleDestroy()).resolves.not.toThrow();
+      await expect(service.onModuleDestroy()).resolves.toBeUndefined();
 
       expect(monitorChannel.close).toHaveBeenCalled();
       expect(monitorConnection.close).toHaveBeenCalled();
+      expect(service.isInitialized()).toBe(false);
+    });
+
+    it('should close an in-flight monitor reconnect during shutdown', async () => {
+      const reconnectChannel = createMockAmqpChannel();
+      const reconnectConnection = createMockAmqpConnection(reconnectChannel);
+      let finishReconnect!: () => void;
+      const reconnectReady = new Promise<void>((resolve) => {
+        finishReconnect = resolve;
+      });
+      const serviceWithMonitor = service as unknown as {
+        monitorConnected: boolean;
+        monitorChannel?: ReturnType<typeof createMockAmqpChannel>;
+        monitorConnection?: ReturnType<typeof createMockAmqpConnection>;
+        monitorReconnectPromise?: Promise<void>;
+        monitorUrl?: string;
+      };
+      serviceWithMonitor.monitorConnected = false;
+      serviceWithMonitor.monitorReconnectPromise = reconnectReady.then(() => {
+        serviceWithMonitor.monitorChannel = reconnectChannel;
+        serviceWithMonitor.monitorConnection = reconnectConnection;
+        serviceWithMonitor.monitorConnected = true;
+      });
+      serviceWithMonitor.monitorUrl = 'amqp://test';
+
+      let shutdownComplete = false;
+      const shutdown = service.onModuleDestroy();
+      void shutdown.then(() => {
+        shutdownComplete = true;
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(shutdownComplete).toBe(false);
+      expect(reconnectChannel.close).not.toHaveBeenCalled();
+      expect(reconnectConnection.close).not.toHaveBeenCalled();
+
+      finishReconnect();
+      await expect(shutdown).resolves.toBeUndefined();
+
+      expect(reconnectChannel.close).toHaveBeenCalled();
+      expect(reconnectConnection.close).toHaveBeenCalled();
     });
   });
 
