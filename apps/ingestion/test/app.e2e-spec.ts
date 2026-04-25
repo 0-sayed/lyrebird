@@ -218,6 +218,42 @@ describe('IngestionController (e2e)', () => {
           );
         });
     });
+
+    it.each(['disconnected', 'connecting', 'reconnecting'] as const)(
+      'returns 503 when Jetstream is %s',
+      async (connectionStatus) => {
+        mockJetstreamManager.getStatus.mockReturnValueOnce({
+          isListening: false,
+          connectionStatus,
+          activeJobCount: 0,
+          metrics: {
+            messagesReceived: 0,
+            messagesPerSecond: 0,
+            postsProcessed: 0,
+            connectionStatus,
+            reconnectAttempts: 1,
+            exhaustedAt: undefined,
+          },
+        });
+
+        await request(app.getHttpServer() as App)
+          .get('/health/ready')
+          .expect(503)
+          .expect((res) => {
+            expect(res.body).toEqual(
+              expect.objectContaining({
+                status: 'not_ready',
+                service: 'ingestion',
+                checks: {
+                  jetstream: { status: connectionStatus },
+                  rabbitmq: { status: 'connected' },
+                  database: { status: 'connected' },
+                },
+              }),
+            );
+          });
+      },
+    );
   });
 });
 

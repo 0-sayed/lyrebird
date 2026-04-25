@@ -39,7 +39,9 @@ describe('DatabaseService', () => {
 
   describe('getHealthStatus', () => {
     it('should return healthy status with latency when SELECT 1 succeeds', async () => {
-      const queryMock = jest.fn().mockResolvedValue({ rows: [{ '?column?': 1 }] });
+      const queryMock = jest
+        .fn()
+        .mockResolvedValue({ rows: [{ '?column?': 1 }] });
       const dateNowSpy = jest
         .spyOn(Date, 'now')
         .mockReturnValueOnce(100)

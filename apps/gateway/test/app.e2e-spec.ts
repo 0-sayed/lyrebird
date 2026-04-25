@@ -4,7 +4,12 @@ jest.mock('@thallesp/nestjs-better-auth', () => ({
 }));
 
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import {
+  Global,
+  INestApplication,
+  Module,
+  ValidationPipe,
+} from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule, EventEmitter2 } from '@nestjs/event-emitter';
 import request from 'supertest';
@@ -43,6 +48,22 @@ const mockJobsRepository = createMockJobsRepository(jobStore);
 const mockSentimentDataRepository = createMockSentimentDataRepository();
 const mockRabbitmqService = createMockRabbitmqService();
 const mockDatabaseService = createMockDatabaseService();
+
+@Global()
+@Module({
+  providers: [
+    {
+      provide: RabbitmqService,
+      useValue: mockRabbitmqService,
+    },
+    {
+      provide: DatabaseService,
+      useValue: mockDatabaseService,
+    },
+  ],
+  exports: [RabbitmqService, DatabaseService],
+})
+class MockHealthDependenciesModule {}
 
 /**
  * Helper to create a job and return its ID
@@ -85,6 +106,7 @@ describe('Gateway API (e2e)', () => {
           delimiter: '.',
           ignoreErrors: false,
         }),
+        MockHealthDependenciesModule,
         HealthModule,
       ],
       controllers: [GatewayController, JobEventsController, JobSseController],

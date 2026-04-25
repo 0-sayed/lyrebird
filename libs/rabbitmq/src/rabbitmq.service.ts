@@ -44,6 +44,8 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
   private clients: Map<string, ClientProxy> = new Map();
   private monitorConnection?: ChannelModel;
   private monitorChannel?: Pick<Channel, 'checkQueue' | 'close'>;
+  private monitorUrl?: string;
+  private monitorReconnectPromise?: Promise<void>;
   private monitorConnected = false;
   private lastMonitorError?: string;
 
@@ -73,7 +75,16 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
       });
 
       await Promise.all(connectionPromises);
-      await this.initializeMonitor(url);
+      this.monitorUrl = url;
+      try {
+        await this.initializeMonitor(url);
+      } catch (error) {
+        this.lastMonitorError =
+          error instanceof Error ? error.message : String(error);
+        this.logger.warn(
+          `RabbitMQ monitor connection unavailable: ${this.lastMonitorError}`,
+        );
+      }
 
       this.logger.log(
         `RabbitMQ connected successfully (${queues.length} queues)`,
@@ -217,9 +228,9 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
   /**
    * Health check - verify RabbitMQ connections are actually active
    */
-  healthCheck(): boolean {
+  async healthCheck(): Promise<boolean> {
     try {
-      return this.getHealthStatus().healthy;
+      return (await this.getHealthStatus()).healthy;
     } catch (error) {
       this.logger.error(
         'RabbitMQ health check failed',
@@ -229,7 +240,9 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  getHealthStatus(): RabbitmqHealthStatus {
+  async getHealthStatus(): Promise<RabbitmqHealthStatus> {
+    await this.ensureMonitorConnected();
+
     const initializedQueues = Array.from(this.clients.keys());
     const expectedQueues = Object.values(RABBITMQ_CONSTANTS.QUEUES);
     const allExpectedQueuesInitialized = expectedQueues.every((queue) =>
@@ -254,6 +267,8 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
     queue: string,
     threshold = 100,
   ): Promise<RabbitmqBackpressureStatus> {
+    await this.ensureMonitorConnected();
+
     if (!this.monitorConnected || !this.monitorChannel) {
       return this.createUnavailableBackpressureStatus(queue, threshold);
     }
@@ -289,9 +304,40 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  private async ensureMonitorConnected(): Promise<void> {
+    if (
+      this.monitorConnected &&
+      this.monitorConnection !== undefined &&
+      this.monitorChannel !== undefined
+    ) {
+      return;
+    }
+
+    if (!this.monitorUrl) {
+      return;
+    }
+
+    if (!this.monitorReconnectPromise) {
+      this.monitorReconnectPromise = this.initializeMonitor(this.monitorUrl)
+        .catch((error) => {
+          this.lastMonitorError =
+            error instanceof Error ? error.message : String(error);
+          this.logger.warn(
+            `RabbitMQ monitor reconnect failed: ${this.lastMonitorError}`,
+          );
+        })
+        .finally(() => {
+          this.monitorReconnectPromise = undefined;
+        });
+    }
+
+    await this.monitorReconnectPromise;
+  }
+
   private handleMonitorDisconnect(error?: Error): void {
     this.monitorConnected = false;
     this.monitorChannel = undefined;
+    this.monitorConnection = undefined;
     this.lastMonitorError =
       error?.message ?? 'RabbitMQ monitor connection closed';
   }
@@ -301,11 +347,16 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
     const connection = this.monitorConnection;
     this.monitorChannel = undefined;
     this.monitorConnection = undefined;
+    this.monitorUrl = undefined;
+    this.monitorReconnectPromise = undefined;
     this.monitorConnected = false;
     this.lastMonitorError = undefined;
 
-    await channel?.close();
-    await connection?.close();
+    try {
+      await channel?.close();
+    } finally {
+      await connection?.close();
+    }
   }
 
   private createUnavailableBackpressureStatus(

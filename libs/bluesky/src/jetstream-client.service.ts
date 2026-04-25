@@ -155,10 +155,9 @@ export class JetstreamClientService implements OnModuleInit, OnModuleDestroy {
    */
   async connect(cursor?: string): Promise<void> {
     if (this.maxReconnectExhausted) {
-      this.logger.warn(
+      throw new Error(
         'Reconnect attempts exhausted. Reset reconnect state before connecting again.',
       );
-      return;
     }
 
     if (this.ws?.readyState === WebSocket.OPEN) {

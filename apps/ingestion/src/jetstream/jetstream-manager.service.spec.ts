@@ -538,6 +538,29 @@ describe('JetstreamManagerService', () => {
       logSpy.mockRestore();
       errorSpy.mockRestore();
     });
+
+    it.each(['0', '-1', 'not-a-number'])(
+      'should fall back to the default threshold for invalid value %s',
+      async (rawThreshold) => {
+        const previousThreshold = process.env.RABBITMQ_BACKPRESSURE_THRESHOLD;
+        process.env.RABBITMQ_BACKPRESSURE_THRESHOLD = rawThreshold;
+
+        try {
+          await runLogMetrics(service);
+
+          expect(rabbitmqService.getBackpressureStatus).toHaveBeenCalledWith(
+            RABBITMQ_CONSTANTS.QUEUES.ANALYSIS,
+            100,
+          );
+        } finally {
+          if (previousThreshold === undefined) {
+            delete process.env.RABBITMQ_BACKPRESSURE_THRESHOLD;
+          } else {
+            process.env.RABBITMQ_BACKPRESSURE_THRESHOLD = previousThreshold;
+          }
+        }
+      },
+    );
   });
 
   describe('stopListening', () => {

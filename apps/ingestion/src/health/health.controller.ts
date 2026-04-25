@@ -58,7 +58,7 @@ export class HealthController {
       );
     }
 
-    const jetstreamReady = jetstreamStatus.connectionStatus !== 'exhausted';
+    const jetstreamReady = jetstreamStatus.connectionStatus === 'connected';
     const isReady = jetstreamReady && rabbitmqHealthy && databaseHealthy;
 
     const responseBody = {

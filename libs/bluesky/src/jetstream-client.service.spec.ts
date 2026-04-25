@@ -164,6 +164,17 @@ describe('JetstreamClientService', () => {
 
       expect(statuses.at(-1)).toBe('connected');
     });
+
+    it('should reject connect attempts after reconnect exhaustion', async () => {
+      (
+        service as unknown as { maxReconnectExhausted: boolean }
+      ).maxReconnectExhausted = true;
+
+      await expect(service.connect()).rejects.toThrow(
+        'Reconnect attempts exhausted',
+      );
+      expect(MockWebSocket).not.toHaveBeenCalled();
+    });
   });
 
   describe('message handling', () => {

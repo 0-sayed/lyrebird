@@ -100,15 +100,14 @@ export const createMockRabbitmqService = () => ({
   getBackpressureStatus: jest.fn<
     Promise<RabbitmqBackpressureStatus>,
     [string, number?]
-  >(
-    (queue: string, threshold = 100) =>
-      Promise.resolve({
-        queue,
-        messageCount: 0,
-        consumerCount: 0,
-        threshold,
-        isBackpressured: false,
-      }),
+  >((queue: string, threshold = 100) =>
+    Promise.resolve({
+      queue,
+      messageCount: 0,
+      consumerCount: 0,
+      threshold,
+      isBackpressured: false,
+    }),
   ),
   getClient: jest.fn(),
 });

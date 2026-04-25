@@ -455,7 +455,7 @@ export class JetstreamManagerService implements OnModuleInit, OnModuleDestroy {
     const rawThreshold = process.env.RABBITMQ_BACKPRESSURE_THRESHOLD ?? '100';
     const threshold = Number(rawThreshold);
 
-    return Number.isFinite(threshold) ? threshold : 100;
+    return Number.isFinite(threshold) && threshold > 0 ? threshold : 100;
   }
 
   /**
