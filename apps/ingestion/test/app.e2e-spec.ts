@@ -128,8 +128,55 @@ describe('IngestionController (e2e)', () => {
               service: 'ingestion',
               checks: {
                 jetstream: { status: 'connected' },
-                rabbitmq: { status: 'connected' },
-                database: { status: 'connected' },
+                rabbitmq: {
+                  healthy: true,
+                  connected: true,
+                  initializedQueues: [],
+                },
+                database: {
+                  healthy: true,
+                  latencyMs: 0,
+                },
+              },
+            }),
+          );
+        });
+    });
+
+    it('returns ready when Jetstream is idle with no active jobs', async () => {
+      mockJetstreamManager.getStatus.mockReturnValueOnce({
+        isListening: false,
+        connectionStatus: 'disconnected',
+        activeJobCount: 0,
+        metrics: {
+          messagesReceived: 0,
+          messagesPerSecond: 0,
+          postsProcessed: 0,
+          connectionStatus: 'disconnected',
+          reconnectAttempts: 0,
+          exhaustedAt: undefined,
+        },
+      });
+
+      await request(app.getHttpServer() as App)
+        .get('/health/ready')
+        .expect(200)
+        .expect((res) => {
+          expect(res.body).toEqual(
+            expect.objectContaining({
+              status: 'ready',
+              service: 'ingestion',
+              checks: {
+                jetstream: { status: 'disconnected' },
+                rabbitmq: {
+                  healthy: true,
+                  connected: true,
+                  initializedQueues: [],
+                },
+                database: {
+                  healthy: true,
+                  latencyMs: 0,
+                },
               },
             }),
           );
@@ -153,8 +200,15 @@ describe('IngestionController (e2e)', () => {
               service: 'ingestion',
               checks: {
                 jetstream: { status: 'connected' },
-                rabbitmq: { status: 'disconnected' },
-                database: { status: 'connected' },
+                rabbitmq: {
+                  healthy: false,
+                  connected: false,
+                  initializedQueues: [],
+                },
+                database: {
+                  healthy: true,
+                  latencyMs: 0,
+                },
               },
             }),
           );
@@ -178,8 +232,16 @@ describe('IngestionController (e2e)', () => {
               service: 'ingestion',
               checks: {
                 jetstream: { status: 'connected' },
-                rabbitmq: { status: 'connected' },
-                database: { status: 'disconnected' },
+                rabbitmq: {
+                  healthy: true,
+                  connected: true,
+                  initializedQueues: [],
+                },
+                database: {
+                  healthy: false,
+                  latencyMs: 3,
+                  error: 'connection refused',
+                },
               },
             }),
           );
@@ -211,15 +273,22 @@ describe('IngestionController (e2e)', () => {
               service: 'ingestion',
               checks: {
                 jetstream: { status: 'exhausted' },
-                rabbitmq: { status: 'connected' },
-                database: { status: 'connected' },
+                rabbitmq: {
+                  healthy: true,
+                  connected: true,
+                  initializedQueues: [],
+                },
+                database: {
+                  healthy: true,
+                  latencyMs: 0,
+                },
               },
             }),
           );
         });
     });
 
-    it.each(['disconnected', 'connecting', 'reconnecting'] as const)(
+    it.each(['connecting', 'reconnecting'] as const)(
       'returns 503 when Jetstream is %s',
       async (connectionStatus) => {
         mockJetstreamManager.getStatus.mockReturnValueOnce({
@@ -246,8 +315,15 @@ describe('IngestionController (e2e)', () => {
                 service: 'ingestion',
                 checks: {
                   jetstream: { status: connectionStatus },
-                  rabbitmq: { status: 'connected' },
-                  database: { status: 'connected' },
+                  rabbitmq: {
+                    healthy: true,
+                    connected: true,
+                    initializedQueues: [],
+                  },
+                  database: {
+                    healthy: true,
+                    latencyMs: 0,
+                  },
                 },
               }),
             );

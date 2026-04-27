@@ -5,8 +5,8 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
-import { RabbitmqService } from '@app/rabbitmq';
-import { DatabaseService } from '@app/database';
+import { RabbitmqHealthStatus, RabbitmqService } from '@app/rabbitmq';
+import { DatabaseService, PostgresHealthStatus } from '@app/database';
 import { JetstreamManagerService } from '../jetstream/jetstream-manager.service';
 
 @Controller('health')
@@ -36,10 +36,13 @@ export class HealthController {
   async getReadiness() {
     const jetstreamStatus = this.jetstreamManager.getStatus();
 
-    let rabbitmqHealthy = false;
+    let rabbitmq: RabbitmqHealthStatus = {
+      healthy: false,
+      connected: false,
+      initializedQueues: [],
+    };
     try {
-      const rabbitmq = await this.rabbitmqService.getHealthStatus();
-      rabbitmqHealthy = rabbitmq.healthy;
+      rabbitmq = await this.rabbitmqService.getHealthStatus();
     } catch (error) {
       this.logger.error(
         'RabbitMQ health check failed',
@@ -47,10 +50,12 @@ export class HealthController {
       );
     }
 
-    let databaseHealthy = false;
+    let database: PostgresHealthStatus = {
+      healthy: false,
+      latencyMs: 0,
+    };
     try {
-      const database = await this.databaseService.getHealthStatus();
-      databaseHealthy = database.healthy;
+      database = await this.databaseService.getHealthStatus();
     } catch (error) {
       this.logger.error(
         'Database health check failed',
@@ -58,8 +63,11 @@ export class HealthController {
       );
     }
 
-    const jetstreamReady = jetstreamStatus.connectionStatus === 'connected';
-    const isReady = jetstreamReady && rabbitmqHealthy && databaseHealthy;
+    const jetstreamReady =
+      jetstreamStatus.connectionStatus === 'connected' ||
+      (jetstreamStatus.connectionStatus === 'disconnected' &&
+        jetstreamStatus.activeJobCount === 0);
+    const isReady = jetstreamReady && rabbitmq.healthy && database.healthy;
 
     const responseBody = {
       status: isReady ? 'ready' : 'not_ready',
@@ -67,8 +75,8 @@ export class HealthController {
       timestamp: new Date().toISOString(),
       checks: {
         jetstream: { status: jetstreamStatus.connectionStatus },
-        rabbitmq: { status: rabbitmqHealthy ? 'connected' : 'disconnected' },
-        database: { status: databaseHealthy ? 'connected' : 'disconnected' },
+        rabbitmq,
+        database,
       },
     };
 
