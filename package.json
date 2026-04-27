@@ -73,7 +73,7 @@
     "@nestjs/config": "^4.0.3",
     "@nestjs/core": "^11.1.13",
     "@nestjs/event-emitter": "^3.0.1",
-    "@nestjs/microservices": "^11.1.13",
+    "@nestjs/microservices": "^11.1.19",
     "@nestjs/platform-express": "^11.1.13",
     "@nestjs/swagger": "^11.2.6",
     "@nestjs/terminus": "^11.0.0",
