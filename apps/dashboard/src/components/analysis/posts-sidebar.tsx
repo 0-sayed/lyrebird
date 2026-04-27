@@ -11,6 +11,13 @@ import type { PostsSidebarProps } from './types';
 
 type SentimentFilter = 'all' | SentimentLabel;
 type SortMode = 'newest' | 'most-positive' | 'most-negative';
+type ExplorerState = {
+  posts: SentimentDataItem[];
+  searchQuery: string;
+  sentimentFilter: SentimentFilter;
+  sortMode: SortMode;
+  visibleCount: number;
+};
 
 const INITIAL_VISIBLE_COUNT = 25;
 const VISIBLE_COUNT_INCREMENT = 25;
@@ -28,6 +35,16 @@ const sentimentFilters: Array<{
 function getPublishedTime(post: SentimentDataItem) {
   const time = new Date(post.publishedAt).getTime();
   return Number.isFinite(time) ? time : 0;
+}
+
+function createInitialExplorerState(posts: SentimentDataItem[]): ExplorerState {
+  return {
+    posts,
+    searchQuery: '',
+    sentimentFilter: 'all',
+    sortMode: 'newest',
+    visibleCount: INITIAL_VISIBLE_COUNT,
+  };
 }
 
 // =============================================================================
@@ -51,11 +68,27 @@ export function PostsSidebar({
   selectedPostId,
   className,
 }: PostsSidebarProps) {
-  const [searchQuery, setSearchQuery] = React.useState('');
-  const [sentimentFilter, setSentimentFilter] =
-    React.useState<SentimentFilter>('all');
-  const [sortMode, setSortMode] = React.useState<SortMode>('newest');
-  const [visibleCount, setVisibleCount] = React.useState(INITIAL_VISIBLE_COUNT);
+  const [explorerState, setExplorerState] = React.useState(() =>
+    createInitialExplorerState(posts),
+  );
+  const activeExplorerState =
+    explorerState.posts === posts
+      ? explorerState
+      : createInitialExplorerState(posts);
+  const { searchQuery, sentimentFilter, sortMode, visibleCount } =
+    activeExplorerState;
+
+  const updateExplorerState = (
+    update: (state: ExplorerState) => ExplorerState,
+  ) => {
+    setExplorerState((currentState) =>
+      update(
+        currentState.posts === posts
+          ? currentState
+          : createInitialExplorerState(posts),
+      ),
+    );
+  };
 
   const filteredPosts = React.useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -92,30 +125,36 @@ export function PostsSidebar({
       .map(({ post }) => post);
   }, [posts, searchQuery, sentimentFilter, sortMode]);
 
-  const visiblePosts = filteredPosts.slice(0, visibleCount);
-  const hasMorePosts = visibleCount < filteredPosts.length;
-
-  React.useEffect(() => {
-    setVisibleCount(INITIAL_VISIBLE_COUNT);
-  }, [posts]);
-
-  const resetVisibleCount = () => {
-    setVisibleCount(INITIAL_VISIBLE_COUNT);
-  };
+  const selectedPostIndex = selectedPostId
+    ? filteredPosts.findIndex((post) => post.id === selectedPostId)
+    : -1;
+  const visibleLimit =
+    selectedPostIndex >= visibleCount ? selectedPostIndex + 1 : visibleCount;
+  const visiblePosts = filteredPosts.slice(0, visibleLimit);
+  const hasMorePosts = visibleLimit < filteredPosts.length;
 
   const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(event.target.value);
-    resetVisibleCount();
+    updateExplorerState((state) => ({
+      ...state,
+      searchQuery: event.target.value,
+      visibleCount: INITIAL_VISIBLE_COUNT,
+    }));
   };
 
   const handleSentimentFilterChange = (filter: SentimentFilter) => {
-    setSentimentFilter(filter);
-    resetVisibleCount();
+    updateExplorerState((state) => ({
+      ...state,
+      sentimentFilter: filter,
+      visibleCount: INITIAL_VISIBLE_COUNT,
+    }));
   };
 
   const handleSortModeChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
-    setSortMode(event.target.value as SortMode);
-    resetVisibleCount();
+    updateExplorerState((state) => ({
+      ...state,
+      sortMode: event.target.value as SortMode,
+      visibleCount: INITIAL_VISIBLE_COUNT,
+    }));
   };
 
   return (
@@ -200,10 +239,12 @@ export function PostsSidebar({
                 <option value="most-negative">Most negative</option>
               </select>
 
-              <p className="text-xs text-muted-foreground">
-                Showing {visiblePosts.length} of {filteredPosts.length}{' '}
-                matching post{filteredPosts.length === 1 ? '' : 's'}
-              </p>
+              {filteredPosts.length > 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  Showing {visiblePosts.length} of {filteredPosts.length}{' '}
+                  matching post{filteredPosts.length === 1 ? '' : 's'}
+                </p>
+              ) : null}
             </div>
           </div>
 
@@ -232,9 +273,13 @@ export function PostsSidebar({
                   type="button"
                   variant="outline"
                   className="mt-4 w-full"
-                  onClick={() =>
-                    setVisibleCount((count) => count + VISIBLE_COUNT_INCREMENT)
-                  }
+                  onClick={() => {
+                    updateExplorerState((state) => ({
+                      ...state,
+                      visibleCount:
+                        state.visibleCount + VISIBLE_COUNT_INCREMENT,
+                    }));
+                  }}
                 >
                   Show more
                 </Button>

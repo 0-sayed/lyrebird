@@ -6,7 +6,6 @@ import {
   render,
   resetMockIdCounter,
   screen,
-  waitFor,
   userEvent,
 } from '@/__tests__/test-utils';
 import { SentimentLabel } from '@/types/api';
@@ -338,16 +337,20 @@ describe('PostsSidebar', () => {
       ).toBeInTheDocument();
     });
 
-    it('resets visible posts to 25 when the posts dataset changes', async () => {
+    it('resets controls and visible posts before rendering a changed dataset', async () => {
       const user = userEvent.setup();
       const initialPosts = Array.from({ length: 60 }, (_, index) =>
         createExplorerPost(index, {
           textContent: `Initial dataset post ${index}`,
+          sentimentLabel: SentimentLabel.POSITIVE,
+          sentimentScore: 0.8,
         }),
       );
       const nextPosts = Array.from({ length: 30 }, (_, index) =>
         createExplorerPost(index + 100, {
           textContent: `Next dataset post ${index}`,
+          sentimentLabel: SentimentLabel.NEUTRAL,
+          sentimentScore: 0,
         }),
       );
 
@@ -355,16 +358,61 @@ describe('PostsSidebar', () => {
         <PostsSidebar {...defaultProps} posts={initialPosts} />,
       );
 
+      await user.type(screen.getByLabelText('Search posts'), 'initial');
+      await user.click(screen.getByRole('button', { name: 'Positive' }));
+      await user.selectOptions(
+        screen.getByLabelText('Sort posts'),
+        'most-positive',
+      );
       await user.click(screen.getByRole('button', { name: 'Show more' }));
       expect(getPostCards()).toHaveLength(50);
 
       rerender(<PostsSidebar {...defaultProps} posts={nextPosts} />);
 
-      await waitFor(() => {
-        expect(getPostCards()).toHaveLength(25);
-      });
+      expect(screen.getByLabelText('Search posts')).toHaveValue('');
+      expect(screen.getByRole('button', { name: 'All' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      expect(screen.getByLabelText('Sort posts')).toHaveValue('newest');
+      expect(getPostCards()).toHaveLength(25);
       expect(
         screen.getByText('Showing 25 of 30 matching posts'),
+      ).toBeInTheDocument();
+    });
+
+    it('keeps a selected post visible after pagination resets', async () => {
+      const user = userEvent.setup();
+      const posts = Array.from({ length: 60 }, (_, index) =>
+        createExplorerPost(index, {
+          textContent: `Selected reset post ${index}`,
+          sentimentLabel: SentimentLabel.POSITIVE,
+          sentimentScore: 0.8,
+        }),
+      );
+      const selectedPostId = 'explorer-20';
+
+      const { rerender } = render(
+        <PostsSidebar {...defaultProps} posts={posts} />,
+      );
+
+      await user.click(screen.getByRole('button', { name: 'Show more' }));
+      rerender(
+        <PostsSidebar
+          {...defaultProps}
+          posts={posts}
+          selectedPostId={selectedPostId}
+        />,
+      );
+
+      await user.click(screen.getByRole('button', { name: 'Positive' }));
+
+      const selectedPost = screen
+        .getByText('Selected reset post 20')
+        .closest('[role="button"]');
+      expect(selectedPost).toHaveAttribute('aria-current', 'true');
+      expect(
+        screen.getByText('Showing 40 of 60 matching posts'),
       ).toBeInTheDocument();
     });
 
@@ -384,6 +432,9 @@ describe('PostsSidebar', () => {
       ).not.toBeInTheDocument();
       expect(
         screen.queryByRole('button', { name: 'Show more' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText('Showing 0 of 0 matching posts'),
       ).not.toBeInTheDocument();
     });
   });
