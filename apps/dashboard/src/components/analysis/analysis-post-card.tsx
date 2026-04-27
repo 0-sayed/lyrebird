@@ -22,6 +22,7 @@ import type { AnalysisPostCardProps } from './types';
  */
 export function AnalysisPostCard({
   post,
+  isSelected,
   onClick,
   className,
 }: AnalysisPostCardProps) {
@@ -57,8 +58,10 @@ export function AnalysisPostCard({
         styles.focusRing,
         styles.hoverBg,
         styles.hoverBorder,
+        isSelected && 'border-primary bg-primary/5 ring-1 ring-primary/40',
         className,
       )}
+      aria-current={isSelected ? 'true' : undefined}
       aria-label={
         sanitizedSourceUrl
           ? `View original post on ${post.source}`

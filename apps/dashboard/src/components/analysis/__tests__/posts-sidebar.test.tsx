@@ -6,8 +6,10 @@ import {
   render,
   resetMockIdCounter,
   screen,
+  waitFor,
   userEvent,
 } from '@/__tests__/test-utils';
+import { SentimentLabel } from '@/types/api';
 import { PostsSidebar } from '../posts-sidebar';
 
 // =============================================================================
@@ -20,6 +22,24 @@ describe('PostsSidebar', () => {
     isOpen: true,
     onToggle: vi.fn(),
   };
+
+  const getPostCards = () =>
+    screen.getAllByRole('button', { name: /View original post/ });
+
+  const createExplorerPost = (
+    index: number,
+    overrides: Partial<ReturnType<typeof createMockSentimentItem>> = {},
+  ) =>
+    createMockSentimentItem({
+      id: `explorer-${index}`,
+      textContent: `Explorer post ${index}`,
+      authorName: `author-${index}.bsky.social`,
+      sentimentScore: 0,
+      sentimentLabel: SentimentLabel.NEUTRAL,
+      publishedAt: new Date(Date.UTC(2026, 0, index + 1)).toISOString(),
+      analyzedAt: new Date(Date.UTC(2026, 0, index + 1)).toISOString(),
+      ...overrides,
+    });
 
   beforeEach(() => {
     resetMockIdCounter();
@@ -67,7 +87,305 @@ describe('PostsSidebar', () => {
       });
       expect(postCards).toHaveLength(3);
     });
+  });
 
+  // ===========================================================================
+  // Post Explorer Control Tests
+  // ===========================================================================
+
+  describe('post explorer controls', () => {
+    it('searches posts by content and author', async () => {
+      const user = userEvent.setup();
+      const posts = [
+        createExplorerPost(1, {
+          textContent: 'Release notes for search behavior',
+          authorName: 'alpha.bsky.social',
+        }),
+        createExplorerPost(2, {
+          textContent: 'Unrelated dashboard update',
+          authorName: 'beta.bsky.social',
+        }),
+      ];
+
+      render(<PostsSidebar {...defaultProps} posts={posts} />);
+
+      const search = screen.getByLabelText('Search posts');
+      await user.type(search, 'release notes');
+
+      expect(
+        screen.getByText('Release notes for search behavior'),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText('Unrelated dashboard update'),
+      ).not.toBeInTheDocument();
+
+      await user.clear(search);
+      await user.type(search, 'beta');
+
+      expect(
+        screen.getByText('Unrelated dashboard update'),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText('Release notes for search behavior'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('filters posts by positive, neutral, and negative sentiment', async () => {
+      const user = userEvent.setup();
+      const posts = [
+        createExplorerPost(1, {
+          textContent: 'Positive post',
+          sentimentScore: 0.8,
+          sentimentLabel: SentimentLabel.POSITIVE,
+        }),
+        createExplorerPost(2, {
+          textContent: 'Neutral post',
+          sentimentScore: 0,
+          sentimentLabel: SentimentLabel.NEUTRAL,
+        }),
+        createExplorerPost(3, {
+          textContent: 'Negative post',
+          sentimentScore: -0.8,
+          sentimentLabel: SentimentLabel.NEGATIVE,
+        }),
+      ];
+
+      render(<PostsSidebar {...defaultProps} posts={posts} />);
+
+      await user.click(screen.getByRole('button', { name: 'Positive' }));
+
+      expect(screen.getByText('Positive post')).toBeInTheDocument();
+      expect(screen.queryByText('Neutral post')).not.toBeInTheDocument();
+      expect(screen.queryByText('Negative post')).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Neutral' }));
+
+      expect(screen.getByText('Neutral post')).toBeInTheDocument();
+      expect(screen.queryByText('Positive post')).not.toBeInTheDocument();
+      expect(screen.queryByText('Negative post')).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Negative' }));
+
+      expect(screen.getByText('Negative post')).toBeInTheDocument();
+      expect(screen.queryByText('Positive post')).not.toBeInTheDocument();
+      expect(screen.queryByText('Neutral post')).not.toBeInTheDocument();
+    });
+
+    it('sorts posts by newest first', async () => {
+      const user = userEvent.setup();
+      const posts = [
+        createExplorerPost(1, {
+          textContent: 'Oldest post',
+          publishedAt: '2026-01-01T00:00:00.000Z',
+          sentimentScore: 0.9,
+        }),
+        createExplorerPost(2, {
+          textContent: 'Newest post',
+          publishedAt: '2026-01-03T00:00:00.000Z',
+          sentimentScore: 0.1,
+        }),
+        createExplorerPost(3, {
+          textContent: 'Middle post',
+          publishedAt: '2026-01-02T00:00:00.000Z',
+          sentimentScore: 0.2,
+        }),
+      ];
+
+      render(<PostsSidebar {...defaultProps} posts={posts} />);
+
+      await user.selectOptions(
+        screen.getByLabelText('Sort posts'),
+        'most-positive',
+      );
+      expect(getPostCards()[0]).toHaveTextContent('Oldest post');
+
+      await user.selectOptions(screen.getByLabelText('Sort posts'), 'newest');
+
+      expect(getPostCards()[0]).toHaveTextContent('Newest post');
+    });
+
+    it('sorts posts by most positive and most negative sentiment', async () => {
+      const user = userEvent.setup();
+      const posts = [
+        createExplorerPost(1, {
+          textContent: 'Neutral first',
+          sentimentScore: 0,
+          sentimentLabel: SentimentLabel.NEUTRAL,
+        }),
+        createExplorerPost(2, {
+          textContent: 'Most negative first',
+          sentimentScore: -0.9,
+          sentimentLabel: SentimentLabel.NEGATIVE,
+        }),
+        createExplorerPost(3, {
+          textContent: 'Most positive first',
+          sentimentScore: 0.9,
+          sentimentLabel: SentimentLabel.POSITIVE,
+        }),
+      ];
+
+      render(<PostsSidebar {...defaultProps} posts={posts} />);
+
+      await user.selectOptions(
+        screen.getByLabelText('Sort posts'),
+        'most-positive',
+      );
+      expect(getPostCards()[0]).toHaveTextContent('Most positive first');
+
+      await user.selectOptions(
+        screen.getByLabelText('Sort posts'),
+        'most-negative',
+      );
+      expect(getPostCards()[0]).toHaveTextContent('Most negative first');
+    });
+
+    it('renders the first 25 of 30 matching posts and shows more on request', async () => {
+      const user = userEvent.setup();
+      const posts = Array.from({ length: 30 }, (_, index) =>
+        createExplorerPost(index, { textContent: `Paginated post ${index}` }),
+      );
+
+      render(<PostsSidebar {...defaultProps} posts={posts} />);
+
+      expect(getPostCards()).toHaveLength(25);
+      expect(
+        screen.getByText('Showing 25 of 30 matching posts'),
+      ).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Show more' }));
+
+      expect(getPostCards()).toHaveLength(30);
+      expect(
+        screen.getByText('Showing 30 of 30 matching posts'),
+      ).toBeInTheDocument();
+    });
+
+    it('resets visible posts to 25 when search changes after showing 50 of 60', async () => {
+      const user = userEvent.setup();
+      const posts = Array.from({ length: 60 }, (_, index) =>
+        createExplorerPost(index, {
+          textContent: `Reset target post ${index}`,
+        }),
+      );
+
+      render(<PostsSidebar {...defaultProps} posts={posts} />);
+
+      await user.click(screen.getByRole('button', { name: 'Show more' }));
+      expect(getPostCards()).toHaveLength(50);
+      expect(
+        screen.getByText('Showing 50 of 60 matching posts'),
+      ).toBeInTheDocument();
+
+      await user.type(screen.getByLabelText('Search posts'), 'reset target');
+
+      expect(getPostCards()).toHaveLength(25);
+      expect(
+        screen.getByText('Showing 25 of 60 matching posts'),
+      ).toBeInTheDocument();
+    });
+
+    it('resets visible posts to 25 when sentiment filter changes after showing 50 of 60', async () => {
+      const user = userEvent.setup();
+      const posts = Array.from({ length: 60 }, (_, index) =>
+        createExplorerPost(index, {
+          textContent: `Filter reset post ${index}`,
+          sentimentScore: 0.8,
+          sentimentLabel: SentimentLabel.POSITIVE,
+        }),
+      );
+
+      render(<PostsSidebar {...defaultProps} posts={posts} />);
+
+      await user.click(screen.getByRole('button', { name: 'Show more' }));
+      expect(getPostCards()).toHaveLength(50);
+      expect(
+        screen.getByText('Showing 50 of 60 matching posts'),
+      ).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Positive' }));
+
+      expect(getPostCards()).toHaveLength(25);
+      expect(
+        screen.getByText('Showing 25 of 60 matching posts'),
+      ).toBeInTheDocument();
+    });
+
+    it('resets visible posts to 25 when sort changes after showing 50 of 60', async () => {
+      const user = userEvent.setup();
+      const posts = Array.from({ length: 60 }, (_, index) =>
+        createExplorerPost(index, {
+          textContent: `Sort reset post ${index}`,
+          publishedAt: new Date(Date.UTC(2026, 0, 60 - index)).toISOString(),
+        }),
+      );
+
+      render(<PostsSidebar {...defaultProps} posts={posts} />);
+
+      await user.click(screen.getByRole('button', { name: 'Show more' }));
+      expect(getPostCards()).toHaveLength(50);
+      expect(
+        screen.getByText('Showing 50 of 60 matching posts'),
+      ).toBeInTheDocument();
+
+      await user.selectOptions(
+        screen.getByLabelText('Sort posts'),
+        'most-positive',
+      );
+
+      expect(getPostCards()).toHaveLength(25);
+      expect(
+        screen.getByText('Showing 25 of 60 matching posts'),
+      ).toBeInTheDocument();
+    });
+
+    it('resets visible posts to 25 when the posts dataset changes', async () => {
+      const user = userEvent.setup();
+      const initialPosts = Array.from({ length: 60 }, (_, index) =>
+        createExplorerPost(index, {
+          textContent: `Initial dataset post ${index}`,
+        }),
+      );
+      const nextPosts = Array.from({ length: 30 }, (_, index) =>
+        createExplorerPost(index + 100, {
+          textContent: `Next dataset post ${index}`,
+        }),
+      );
+
+      const { rerender } = render(
+        <PostsSidebar {...defaultProps} posts={initialPosts} />,
+      );
+
+      await user.click(screen.getByRole('button', { name: 'Show more' }));
+      expect(getPostCards()).toHaveLength(50);
+
+      rerender(<PostsSidebar {...defaultProps} posts={nextPosts} />);
+
+      await waitFor(() => {
+        expect(getPostCards()).toHaveLength(25);
+      });
+      expect(
+        screen.getByText('Showing 25 of 30 matching posts'),
+      ).toBeInTheDocument();
+    });
+
+    it('shows an empty state when no posts match filters', async () => {
+      const user = userEvent.setup();
+      const posts = [
+        createExplorerPost(1, { textContent: 'Visible post before search' }),
+      ];
+
+      render(<PostsSidebar {...defaultProps} posts={posts} />);
+
+      await user.type(screen.getByLabelText('Search posts'), 'no result term');
+
+      expect(screen.getByText('No matching posts')).toBeInTheDocument();
+      expect(
+        screen.queryByText('Visible post before search'),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Show more' }),
+      ).not.toBeInTheDocument();
+    });
   });
 
   // ===========================================================================
@@ -129,12 +447,11 @@ describe('PostsSidebar', () => {
         />,
       );
 
-      // The AnalysisPostCard receives isSelected prop
-      // We can verify by checking that our post exists
-      const postCards = screen.getAllByRole('button', {
-        name: /View original post/,
-      });
-      expect(postCards).toHaveLength(3);
+      const selectedPost = screen
+        .getByText('Mock post content item-1')
+        .closest('[role="button"]');
+
+      expect(selectedPost).toHaveAttribute('aria-current', 'true');
     });
 
     it('calls onSelectPost when a post is clicked', async () => {
@@ -217,6 +534,14 @@ describe('PostsSidebar', () => {
       expect(sidebar.tagName).toBe('ASIDE');
     });
 
+    it('hides sidebar contents from assistive technology and focus when closed', () => {
+      render(<PostsSidebar {...defaultProps} isOpen={false} />);
+
+      const sidebar = screen.getByTestId('posts-sidebar');
+      expect(sidebar).toHaveAttribute('aria-hidden', 'true');
+      expect(sidebar).toHaveAttribute('inert');
+    });
+
     it('toggle button has descriptive aria-label', () => {
       render(<PostsSidebar {...defaultProps} isOpen={true} />);
 
@@ -247,6 +572,7 @@ describe('PostsSidebar', () => {
       render(<PostsSidebar {...defaultProps} posts={posts} />);
 
       expect(screen.getByText('100 analyzed posts')).toBeInTheDocument();
+      expect(getPostCards()).toHaveLength(25);
     });
 
     it('handles posts with missing optional fields', () => {
