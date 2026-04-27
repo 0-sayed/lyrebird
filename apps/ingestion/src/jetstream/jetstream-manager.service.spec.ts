@@ -517,6 +517,24 @@ describe('JetstreamManagerService', () => {
       warnSpy.mockRestore();
     });
 
+    it('should not log a backpressure warning when queue depth is unavailable', async () => {
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+
+      rabbitmqService.getBackpressureStatus.mockResolvedValueOnce({
+        queue: RABBITMQ_CONSTANTS.QUEUES.ANALYSIS,
+        messageCount: -1,
+        consumerCount: 0,
+        threshold: 100,
+        isBackpressured: false,
+      });
+
+      await runLogMetrics(service);
+
+      expect(warnSpy).not.toHaveBeenCalled();
+
+      warnSpy.mockRestore();
+    });
+
     it('should catch backpressure check failures without crashing metrics logging', async () => {
       const logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation();
       const errorSpy = jest

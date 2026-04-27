@@ -376,7 +376,7 @@ describe('RabbitmqService', () => {
       });
     });
 
-    it('should return a sentinel backpressure result when the monitor is unavailable', async () => {
+    it('should return an unavailable sentinel when the monitor is unavailable', async () => {
       await expect(
         service.getBackpressureStatus(RABBITMQ_CONSTANTS.QUEUES.INGESTION, 25),
       ).resolves.toEqual({
@@ -384,7 +384,7 @@ describe('RabbitmqService', () => {
         messageCount: -1,
         consumerCount: 0,
         threshold: 25,
-        isBackpressured: true,
+        isBackpressured: false,
       });
     });
 
@@ -405,7 +405,7 @@ describe('RabbitmqService', () => {
         messageCount: -1,
         consumerCount: 0,
         threshold: 10,
-        isBackpressured: true,
+        isBackpressured: false,
       });
       await expect(service.getHealthStatus()).resolves.toMatchObject({
         lastError: 'Queue inspect failed',

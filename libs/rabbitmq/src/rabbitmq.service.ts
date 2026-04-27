@@ -382,7 +382,7 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
       messageCount: -1,
       consumerCount: 0,
       threshold,
-      isBackpressured: true,
+      isBackpressured: false,
     };
   }
 
