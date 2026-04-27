@@ -5,8 +5,8 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
-import { RabbitmqService } from '@app/rabbitmq';
-import { DatabaseService } from '@app/database';
+import { RabbitmqHealthStatus, RabbitmqService } from '@app/rabbitmq';
+import { DatabaseService, PostgresHealthStatus } from '@app/database';
 import { BertSentimentService } from '../services/bert-sentiment.service';
 
 @Controller('health')
@@ -34,9 +34,13 @@ export class HealthController {
 
   @Get('ready')
   async getReadiness() {
-    let rabbitmqHealthy = false;
+    let rabbitmq: RabbitmqHealthStatus = {
+      healthy: false,
+      connected: false,
+      initializedQueues: [],
+    };
     try {
-      rabbitmqHealthy = this.rabbitmqService.isInitialized();
+      rabbitmq = await this.rabbitmqService.getHealthStatus();
     } catch (error) {
       this.logger.error(
         'RabbitMQ health check failed',
@@ -44,9 +48,12 @@ export class HealthController {
       );
     }
 
-    let databaseHealthy = false;
+    let database: PostgresHealthStatus = {
+      healthy: false,
+      latencyMs: 0,
+    };
     try {
-      databaseHealthy = await this.databaseService.healthCheck();
+      database = await this.databaseService.getHealthStatus();
     } catch (error) {
       this.logger.error(
         'Database health check failed',
@@ -57,15 +64,15 @@ export class HealthController {
     // Check BERT model status (not required for ready status)
     const bertStatus = this.bertSentimentService.getStatus();
 
-    const isReady = rabbitmqHealthy && databaseHealthy;
+    const isReady = rabbitmq.healthy && database.healthy;
 
     const responseBody = {
       status: isReady ? 'ready' : 'not_ready',
       service: 'analysis',
       timestamp: new Date().toISOString(),
       checks: {
-        rabbitmq: rabbitmqHealthy ? 'connected' : 'disconnected',
-        database: databaseHealthy ? 'connected' : 'disconnected',
+        rabbitmq,
+        database,
         bert: {
           ready: bertStatus.ready,
           provider: bertStatus.provider,

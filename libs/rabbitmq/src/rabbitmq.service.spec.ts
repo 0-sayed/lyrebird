@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { RabbitmqService } from './rabbitmq.service';
 import { ClientProxy, ClientProxyFactory } from '@nestjs/microservices';
+import * as amqplib from 'amqplib';
 import { of, throwError } from 'rxjs';
 import {
   RABBITMQ_CONSTANTS,
@@ -9,7 +10,15 @@ import {
   getQueueForPattern,
 } from './rabbitmq.constants';
 import { MESSAGE_PATTERNS } from '@app/shared-types';
-import { createMockClientProxy } from '@app/testing';
+import {
+  createMockAmqpChannel,
+  createMockAmqpConnection,
+  createMockClientProxy,
+} from '@app/testing';
+
+jest.mock('amqplib', () => ({
+  connect: jest.fn(),
+}));
 
 /**
  * Sets up the service with mock clients for all queues
@@ -20,6 +29,46 @@ function setupMockClients(
 ): void {
   (service as unknown as { clients: Map<string, ClientProxy> }).clients =
     mockClients;
+}
+
+function setupMockMonitor(
+  service: RabbitmqService,
+  options: {
+    connected?: boolean;
+    channel?: ReturnType<typeof createMockAmqpChannel> | undefined;
+    connection?: ReturnType<typeof createMockAmqpConnection> | undefined;
+    lastError?: string | undefined;
+  } = {},
+): void {
+  const channel = options.channel;
+  const connection =
+    options.connection ??
+    (channel ? createMockAmqpConnection(channel) : undefined);
+  const serviceWithMonitor = service as unknown as {
+    monitorConnected: boolean;
+    monitorChannel?: ReturnType<typeof createMockAmqpChannel>;
+    monitorConnection?: ReturnType<typeof createMockAmqpConnection>;
+    lastMonitorError?: string;
+    handleMonitorDisconnect(error?: Error): void;
+  };
+
+  Object.assign(serviceWithMonitor, {
+    monitorConnected: options.connected ?? Boolean(channel && connection),
+    monitorChannel: channel,
+    monitorConnection: connection,
+    lastMonitorError: options.lastError,
+  });
+
+  if (connection) {
+    connection.removeAllListeners('close');
+    connection.removeAllListeners('error');
+    connection.on('close', () => {
+      serviceWithMonitor.handleMonitorDisconnect();
+    });
+    connection.on('error', (error: Error) => {
+      serviceWithMonitor.handleMonitorDisconnect(error);
+    });
+  }
 }
 
 describe('RabbitmqService', () => {
@@ -181,10 +230,22 @@ describe('RabbitmqService', () => {
   });
 
   describe('healthCheck', () => {
-    it('should return true when all clients are initialized', async () => {
-      const isHealthy = await service.healthCheck();
+    it('should return true when the monitor connection and channel are healthy', async () => {
+      setupMockMonitor(service, {
+        channel: createMockAmqpChannel(),
+      });
 
-      expect(isHealthy).toBe(true);
+      const healthStatus = await service.getHealthStatus();
+
+      expect(healthStatus).toEqual({
+        healthy: true,
+        connected: true,
+        initializedQueues: [
+          RABBITMQ_CONSTANTS.QUEUES.INGESTION,
+          RABBITMQ_CONSTANTS.QUEUES.ANALYSIS,
+          RABBITMQ_CONSTANTS.QUEUES.GATEWAY,
+        ],
+      });
     });
 
     it('should return false when no clients exist', async () => {
@@ -193,6 +254,162 @@ describe('RabbitmqService', () => {
       const isHealthy = await service.healthCheck();
 
       expect(isHealthy).toBe(false);
+    });
+
+    it('should report unhealthy when not all expected queues are initialized', async () => {
+      setupMockClients(
+        service,
+        new Map<string, ClientProxy>([
+          [RABBITMQ_CONSTANTS.QUEUES.INGESTION, mockIngestionClient],
+          [RABBITMQ_CONSTANTS.QUEUES.ANALYSIS, mockAnalysisClient],
+        ]),
+      );
+      setupMockMonitor(service, {
+        channel: createMockAmqpChannel(),
+      });
+
+      await expect(service.getHealthStatus()).resolves.toEqual({
+        healthy: false,
+        connected: true,
+        initializedQueues: [
+          RABBITMQ_CONSTANTS.QUEUES.INGESTION,
+          RABBITMQ_CONSTANTS.QUEUES.ANALYSIS,
+        ],
+      });
+    });
+
+    it('should report unhealthy state after the monitor connection closes', async () => {
+      const monitorChannel = createMockAmqpChannel();
+      const monitorConnection = createMockAmqpConnection(monitorChannel);
+      setupMockMonitor(service, {
+        channel: monitorChannel,
+        connection: monitorConnection,
+      });
+
+      monitorConnection.emitClose();
+
+      await expect(service.healthCheck()).resolves.toBe(false);
+      await expect(service.getHealthStatus()).resolves.toEqual({
+        healthy: false,
+        connected: false,
+        initializedQueues: [
+          RABBITMQ_CONSTANTS.QUEUES.INGESTION,
+          RABBITMQ_CONSTANTS.QUEUES.ANALYSIS,
+          RABBITMQ_CONSTANTS.QUEUES.GATEWAY,
+        ],
+        lastError: 'RabbitMQ monitor connection closed',
+      });
+    });
+
+    it('should capture the last monitor error when the monitor connection errors', async () => {
+      const monitorChannel = createMockAmqpChannel();
+      const monitorConnection = createMockAmqpConnection(monitorChannel);
+      setupMockMonitor(service, {
+        channel: monitorChannel,
+        connection: monitorConnection,
+      });
+
+      monitorConnection.emitError(new Error('Monitor heartbeat lost'));
+
+      await expect(service.getHealthStatus()).resolves.toEqual({
+        healthy: false,
+        connected: false,
+        initializedQueues: [
+          RABBITMQ_CONSTANTS.QUEUES.INGESTION,
+          RABBITMQ_CONSTANTS.QUEUES.ANALYSIS,
+          RABBITMQ_CONSTANTS.QUEUES.GATEWAY,
+        ],
+        lastError: 'Monitor heartbeat lost',
+      });
+    });
+
+    it('should reconnect the monitor before reporting health', async () => {
+      const oldMonitorChannel = createMockAmqpChannel();
+      const oldMonitorConnection = createMockAmqpConnection(oldMonitorChannel);
+      const newMonitorChannel = createMockAmqpChannel();
+      const newMonitorConnection = createMockAmqpConnection(newMonitorChannel);
+      setupMockMonitor(service, {
+        channel: oldMonitorChannel,
+        connection: oldMonitorConnection,
+      });
+      (service as unknown as { monitorUrl: string }).monitorUrl = 'amqp://test';
+      jest
+        .mocked(amqplib.connect)
+        .mockResolvedValueOnce(
+          newMonitorConnection as unknown as Awaited<
+            ReturnType<typeof amqplib.connect>
+          >,
+        );
+
+      oldMonitorConnection.emitClose();
+
+      await expect(service.getHealthStatus()).resolves.toMatchObject({
+        healthy: true,
+        connected: true,
+      });
+      expect(amqplib.connect).toHaveBeenCalledWith('amqp://test');
+      expect(newMonitorConnection.createChannel).toHaveBeenCalled();
+    });
+  });
+
+  describe('getBackpressureStatus', () => {
+    it('should report queue depth and threshold backpressure from the monitor channel', async () => {
+      const monitorChannel = createMockAmqpChannel({
+        checkQueue: jest.fn().mockResolvedValue({
+          queue: RABBITMQ_CONSTANTS.QUEUES.ANALYSIS,
+          messageCount: 100,
+          consumerCount: 4,
+        }),
+      });
+      setupMockMonitor(service, {
+        channel: monitorChannel,
+      });
+
+      await expect(
+        service.getBackpressureStatus(RABBITMQ_CONSTANTS.QUEUES.ANALYSIS, 100),
+      ).resolves.toEqual({
+        queue: RABBITMQ_CONSTANTS.QUEUES.ANALYSIS,
+        messageCount: 100,
+        consumerCount: 4,
+        threshold: 100,
+        isBackpressured: true,
+      });
+    });
+
+    it('should return an unavailable sentinel when the monitor is unavailable', async () => {
+      await expect(
+        service.getBackpressureStatus(RABBITMQ_CONSTANTS.QUEUES.INGESTION, 25),
+      ).resolves.toEqual({
+        queue: RABBITMQ_CONSTANTS.QUEUES.INGESTION,
+        messageCount: -1,
+        consumerCount: 0,
+        threshold: 25,
+        isBackpressured: false,
+      });
+    });
+
+    it('should return the sentinel contract when queue inspection fails', async () => {
+      const monitorChannel = createMockAmqpChannel({
+        checkQueue: jest
+          .fn()
+          .mockRejectedValue(new Error('Queue inspect failed')),
+      });
+      setupMockMonitor(service, {
+        channel: monitorChannel,
+      });
+
+      await expect(
+        service.getBackpressureStatus(RABBITMQ_CONSTANTS.QUEUES.GATEWAY, 10),
+      ).resolves.toEqual({
+        queue: RABBITMQ_CONSTANTS.QUEUES.GATEWAY,
+        messageCount: -1,
+        consumerCount: 0,
+        threshold: 10,
+        isBackpressured: false,
+      });
+      await expect(service.getHealthStatus()).resolves.toMatchObject({
+        lastError: 'Queue inspect failed',
+      });
     });
   });
 
@@ -243,8 +460,20 @@ describe('RabbitmqService', () => {
   describe('onModuleInit', () => {
     let freshService: RabbitmqService;
     let mockConfigService: jest.Mocked<ConfigService>;
+    let mockMonitorChannel: ReturnType<typeof createMockAmqpChannel>;
+    let mockMonitorConnection: ReturnType<typeof createMockAmqpConnection>;
 
     beforeEach(async () => {
+      mockMonitorChannel = createMockAmqpChannel();
+      mockMonitorConnection = createMockAmqpConnection(mockMonitorChannel);
+      jest
+        .mocked(amqplib.connect)
+        .mockResolvedValue(
+          mockMonitorConnection as unknown as Awaited<
+            ReturnType<typeof amqplib.connect>
+          >,
+        );
+
       mockConfigService = {
         get: jest.fn().mockImplementation((key: string) => {
           const config: Record<string, string | number> = {
@@ -281,6 +510,26 @@ describe('RabbitmqService', () => {
       createSpy.mockRestore();
     });
 
+    it('should initialize a monitor connection and report healthy status after startup', async () => {
+      jest
+        .spyOn(ClientProxyFactory, 'create')
+        .mockReturnValue(createMockClientProxy());
+
+      await freshService.onModuleInit();
+
+      expect(amqplib.connect).toHaveBeenCalled();
+      expect(mockMonitorConnection.createChannel).toHaveBeenCalled();
+      await expect(freshService.getHealthStatus()).resolves.toEqual({
+        healthy: true,
+        connected: true,
+        initializedQueues: [
+          RABBITMQ_CONSTANTS.QUEUES.INGESTION,
+          RABBITMQ_CONSTANTS.QUEUES.ANALYSIS,
+          RABBITMQ_CONSTANTS.QUEUES.GATEWAY,
+        ],
+      });
+    });
+
     it('should connect each client after creation', async () => {
       const mockClient = createMockClientProxy();
       jest.spyOn(ClientProxyFactory, 'create').mockReturnValue(mockClient);
@@ -306,9 +555,57 @@ describe('RabbitmqService', () => {
 
       jest.restoreAllMocks();
     });
+
+    it('should continue startup when monitor initialization fails', async () => {
+      jest
+        .spyOn(ClientProxyFactory, 'create')
+        .mockReturnValue(createMockClientProxy());
+      jest
+        .mocked(amqplib.connect)
+        .mockRejectedValueOnce(new Error('monitor unavailable'));
+
+      await expect(freshService.onModuleInit()).resolves.toBeUndefined();
+
+      expect(freshService.isInitialized()).toBe(true);
+    });
+
+    it('should close the monitor connection when channel creation fails', async () => {
+      const monitorConnection = createMockAmqpConnection();
+      monitorConnection.createChannel.mockRejectedValueOnce(
+        new Error('channel unavailable'),
+      );
+      jest
+        .spyOn(ClientProxyFactory, 'create')
+        .mockReturnValue(createMockClientProxy());
+      jest
+        .mocked(amqplib.connect)
+        .mockResolvedValueOnce(
+          monitorConnection as unknown as Awaited<
+            ReturnType<typeof amqplib.connect>
+          >,
+        );
+
+      await expect(freshService.onModuleInit()).resolves.toBeUndefined();
+
+      expect(monitorConnection.close).toHaveBeenCalled();
+    });
   });
 
   describe('onModuleDestroy', () => {
+    it('should close the monitor channel and connection', async () => {
+      const monitorChannel = createMockAmqpChannel();
+      const monitorConnection = createMockAmqpConnection(monitorChannel);
+      setupMockMonitor(service, {
+        channel: monitorChannel,
+        connection: monitorConnection,
+      });
+
+      await service.onModuleDestroy();
+
+      expect(monitorChannel.close).toHaveBeenCalled();
+      expect(monitorConnection.close).toHaveBeenCalled();
+    });
+
     it('should close all client connections', async () => {
       await service.onModuleDestroy();
 
@@ -318,16 +615,91 @@ describe('RabbitmqService', () => {
     });
 
     it('should clear clients map after closing', async () => {
+      setupMockMonitor(service, {
+        channel: createMockAmqpChannel(),
+        lastError: 'stale monitor error',
+      });
+
       await service.onModuleDestroy();
 
       expect(service.isInitialized()).toBe(false);
+      await expect(service.getHealthStatus()).resolves.toEqual({
+        healthy: false,
+        connected: false,
+        initializedQueues: [],
+      });
     });
 
     it('should handle close errors gracefully', async () => {
+      const monitorChannel = createMockAmqpChannel();
+      const monitorConnection = createMockAmqpConnection(monitorChannel);
+      setupMockMonitor(service, {
+        channel: monitorChannel,
+        connection: monitorConnection,
+      });
       mockIngestionClient.close.mockRejectedValue(new Error('Close failed'));
 
       // Should not throw
-      await expect(service.onModuleDestroy()).resolves.not.toThrow();
+      await expect(service.onModuleDestroy()).resolves.toBeUndefined();
+      expect(monitorChannel.close).toHaveBeenCalled();
+      expect(monitorConnection.close).toHaveBeenCalled();
+    });
+
+    it('should still close the monitor connection when channel close fails', async () => {
+      const monitorChannel = createMockAmqpChannel({
+        close: jest.fn().mockRejectedValue(new Error('Channel close failed')),
+      });
+      const monitorConnection = createMockAmqpConnection(monitorChannel);
+      setupMockMonitor(service, {
+        channel: monitorChannel,
+        connection: monitorConnection,
+      });
+
+      await expect(service.onModuleDestroy()).resolves.toBeUndefined();
+
+      expect(monitorChannel.close).toHaveBeenCalled();
+      expect(monitorConnection.close).toHaveBeenCalled();
+      expect(service.isInitialized()).toBe(false);
+    });
+
+    it('should close an in-flight monitor reconnect during shutdown', async () => {
+      const reconnectChannel = createMockAmqpChannel();
+      const reconnectConnection = createMockAmqpConnection(reconnectChannel);
+      let finishReconnect!: () => void;
+      const reconnectReady = new Promise<void>((resolve) => {
+        finishReconnect = resolve;
+      });
+      const serviceWithMonitor = service as unknown as {
+        monitorConnected: boolean;
+        monitorChannel?: ReturnType<typeof createMockAmqpChannel>;
+        monitorConnection?: ReturnType<typeof createMockAmqpConnection>;
+        monitorReconnectPromise?: Promise<void>;
+        monitorUrl?: string;
+      };
+      serviceWithMonitor.monitorConnected = false;
+      serviceWithMonitor.monitorReconnectPromise = reconnectReady.then(() => {
+        serviceWithMonitor.monitorChannel = reconnectChannel;
+        serviceWithMonitor.monitorConnection = reconnectConnection;
+        serviceWithMonitor.monitorConnected = true;
+      });
+      serviceWithMonitor.monitorUrl = 'amqp://test';
+
+      let shutdownComplete = false;
+      const shutdown = service.onModuleDestroy();
+      void shutdown.then(() => {
+        shutdownComplete = true;
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(shutdownComplete).toBe(false);
+      expect(reconnectChannel.close).not.toHaveBeenCalled();
+      expect(reconnectConnection.close).not.toHaveBeenCalled();
+
+      finishReconnect();
+      await expect(shutdown).resolves.toBeUndefined();
+
+      expect(reconnectChannel.close).toHaveBeenCalled();
+      expect(reconnectConnection.close).toHaveBeenCalled();
     });
   });
 

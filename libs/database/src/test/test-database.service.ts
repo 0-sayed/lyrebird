@@ -50,7 +50,8 @@ export class TestDatabaseService {
 
   private assertSafeTestDatabaseConfig(): string {
     const nodeEnv = process.env.NODE_ENV;
-    const databaseName = process.env.DATABASE_NAME || DEFAULT_TEST_DATABASE_NAME;
+    const databaseName =
+      process.env.DATABASE_NAME || DEFAULT_TEST_DATABASE_NAME;
 
     if (nodeEnv !== 'test' || !TEST_DATABASE_NAME_PATTERN.test(databaseName)) {
       throw new Error(

@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, HttpStatus, Res } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { AllowAnonymous } from '@thallesp/nestjs-better-auth';
@@ -7,6 +7,9 @@ import {
   HealthCheckService,
   MemoryHealthIndicator,
 } from '@nestjs/terminus';
+import type { Response } from 'express';
+import { DatabaseService } from '@app/database';
+import { RabbitmqService } from '@app/rabbitmq';
 
 @ApiTags('health')
 @AllowAnonymous()
@@ -19,6 +22,8 @@ export class HealthController {
     private health: HealthCheckService,
     private memory: MemoryHealthIndicator,
     private configService: ConfigService,
+    private readonly rabbitmqService: RabbitmqService,
+    private readonly databaseService: DatabaseService,
   ) {
     const heapLimitMB = this.configService.get<number>(
       'HEALTH_HEAP_LIMIT_MB',
@@ -45,7 +50,25 @@ export class HealthController {
 
   @Get('ready')
   @ApiOperation({ summary: 'Readiness probe' })
-  ready() {
-    return { status: 'ok', timestamp: new Date().toISOString() };
+  async ready(@Res({ passthrough: true }) response: Response) {
+    const rabbitmq = await this.rabbitmqService.getHealthStatus();
+    const database = await this.databaseService.getHealthStatus();
+    const isReady = rabbitmq.healthy && database.healthy;
+
+    const responseBody = {
+      status: isReady ? 'ready' : 'not_ready',
+      service: 'gateway',
+      timestamp: new Date().toISOString(),
+      checks: {
+        rabbitmq,
+        database,
+      },
+    };
+
+    if (!isReady) {
+      response.status(HttpStatus.SERVICE_UNAVAILABLE);
+    }
+
+    return responseBody;
   }
 }

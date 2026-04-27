@@ -4,7 +4,12 @@ jest.mock('@thallesp/nestjs-better-auth', () => ({
 }));
 
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import {
+  Global,
+  INestApplication,
+  Module,
+  ValidationPipe,
+} from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule, EventEmitter2 } from '@nestjs/event-emitter';
 import request from 'supertest';
@@ -44,6 +49,22 @@ const mockSentimentDataRepository = createMockSentimentDataRepository();
 const mockRabbitmqService = createMockRabbitmqService();
 const mockDatabaseService = createMockDatabaseService();
 
+@Global()
+@Module({
+  providers: [
+    {
+      provide: RabbitmqService,
+      useValue: mockRabbitmqService,
+    },
+    {
+      provide: DatabaseService,
+      useValue: mockDatabaseService,
+    },
+  ],
+  exports: [RabbitmqService, DatabaseService],
+})
+class MockHealthDependenciesModule {}
+
 /**
  * Helper to create a job and return its ID
  */
@@ -74,7 +95,10 @@ describe('Gateway API (e2e)', () => {
 
   beforeAll(async () => {
     // Initialize mocks and job store once before the test suite
-    const moduleFixture: TestingModule = await Test.createTestingModule({
+    process.env.HEALTH_HEAP_LIMIT_MB = '512';
+    process.env.HEALTH_RSS_LIMIT_MB = '512';
+
+    const moduleBuilder = Test.createTestingModule({
       imports: [
         ConfigModule.forRoot({ isGlobal: true }),
         EventEmitterModule.forRoot({
@@ -82,6 +106,7 @@ describe('Gateway API (e2e)', () => {
           delimiter: '.',
           ignoreErrors: false,
         }),
+        MockHealthDependenciesModule,
         HealthModule,
       ],
       controllers: [GatewayController, JobEventsController, JobSseController],
@@ -113,7 +138,20 @@ describe('Gateway API (e2e)', () => {
           useValue: mockDatabaseService,
         },
       ],
-    }).compile();
+    });
+
+    moduleBuilder.overrideProvider(JobsRepository).useValue(mockJobsRepository);
+    moduleBuilder
+      .overrideProvider(SentimentDataRepository)
+      .useValue(mockSentimentDataRepository);
+    moduleBuilder
+      .overrideProvider(RabbitmqService)
+      .useValue(mockRabbitmqService);
+    moduleBuilder
+      .overrideProvider(DatabaseService)
+      .useValue(mockDatabaseService);
+
+    const moduleFixture: TestingModule = await moduleBuilder.compile();
 
     app = moduleFixture.createNestApplication();
 
@@ -145,6 +183,15 @@ describe('Gateway API (e2e)', () => {
     // Reset job store between tests
     jobStore.clear();
     jest.clearAllMocks();
+    mockRabbitmqService.getHealthStatus.mockResolvedValue({
+      healthy: true,
+      connected: true,
+      initializedQueues: [],
+    });
+    mockDatabaseService.getHealthStatus.mockResolvedValue({
+      healthy: true,
+      latencyMs: 0,
+    });
   });
 
   afterAll(async () => {
@@ -264,10 +311,101 @@ describe('Gateway API (e2e)', () => {
     });
   });
 
+  describe('GET /health/ready', () => {
+    it('should return ready when RabbitMQ and Postgres are healthy', async () => {
+      const rabbitmqHealth = {
+        healthy: true,
+        connected: true,
+        initializedQueues: [],
+      };
+      const databaseHealth = {
+        healthy: true,
+        latencyMs: 3,
+      };
+      mockRabbitmqService.getHealthStatus.mockResolvedValue(rabbitmqHealth);
+      mockDatabaseService.getHealthStatus.mockResolvedValue(databaseHealth);
+
+      await request(app.getHttpServer() as App)
+        .get('/health/ready')
+        .expect(200)
+        .expect((res) => {
+          expect(res.body).toMatchObject({
+            status: 'ready',
+            service: 'gateway',
+            checks: {
+              rabbitmq: rabbitmqHealth,
+              database: databaseHealth,
+            },
+          });
+          expect(typeof res.body.timestamp).toBe('string');
+        });
+    });
+
+    it('should return 503 when RabbitMQ is unhealthy', async () => {
+      const rabbitmqHealth = {
+        healthy: false,
+        connected: false,
+        initializedQueues: [],
+        lastError: 'connection lost',
+      };
+      const databaseHealth = {
+        healthy: true,
+        latencyMs: 2,
+      };
+      mockRabbitmqService.getHealthStatus.mockResolvedValue(rabbitmqHealth);
+      mockDatabaseService.getHealthStatus.mockResolvedValue(databaseHealth);
+
+      await request(app.getHttpServer() as App)
+        .get('/health/ready')
+        .expect(503)
+        .expect((res) => {
+          expect(res.body).toMatchObject({
+            status: 'not_ready',
+            service: 'gateway',
+            checks: {
+              rabbitmq: rabbitmqHealth,
+              database: databaseHealth,
+            },
+          });
+          expect(typeof res.body.timestamp).toBe('string');
+        });
+    });
+
+    it('should return 503 when Postgres is unhealthy', async () => {
+      const rabbitmqHealth = {
+        healthy: true,
+        connected: true,
+        initializedQueues: [],
+      };
+      const databaseHealth = {
+        healthy: false,
+        latencyMs: 4,
+        error: 'database unavailable',
+      };
+      mockRabbitmqService.getHealthStatus.mockResolvedValue(rabbitmqHealth);
+      mockDatabaseService.getHealthStatus.mockResolvedValue(databaseHealth);
+
+      await request(app.getHttpServer() as App)
+        .get('/health/ready')
+        .expect(503)
+        .expect((res) => {
+          expect(res.body).toMatchObject({
+            status: 'not_ready',
+            service: 'gateway',
+            checks: {
+              rabbitmq: rabbitmqHealth,
+              database: databaseHealth,
+            },
+          });
+          expect(typeof res.body.timestamp).toBe('string');
+        });
+    });
+  });
+
   describe('GET /health', () => {
     it('should return health status', async () => {
       const response = await request(app.getHttpServer() as App)
-        .get('/health/ready')
+        .get('/health')
         .expect(200);
 
       expect(response.body).toHaveProperty('status', 'ok');

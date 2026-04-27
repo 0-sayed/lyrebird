@@ -36,4 +36,68 @@ describe('DatabaseService', () => {
       expect(service.db).toBeDefined();
     });
   });
+
+  describe('getHealthStatus', () => {
+    it('should return healthy status with latency when SELECT 1 succeeds', async () => {
+      const queryMock = jest
+        .fn()
+        .mockResolvedValue({ rows: [{ '?column?': 1 }] });
+      const dateNowSpy = jest
+        .spyOn(Date, 'now')
+        .mockReturnValueOnce(100)
+        .mockReturnValueOnce(112);
+
+      (service as unknown as { pool: { query: typeof queryMock } }).pool.query =
+        queryMock;
+
+      await expect(service.getHealthStatus()).resolves.toEqual({
+        healthy: true,
+        latencyMs: 12,
+      });
+      expect(queryMock).toHaveBeenCalledWith('SELECT 1');
+
+      dateNowSpy.mockRestore();
+    });
+
+    it('should return unhealthy status with latency and error when SELECT 1 fails', async () => {
+      const error = new Error('database unavailable');
+      const queryMock = jest.fn().mockRejectedValue(error);
+      const loggerErrorMock = jest.fn();
+      const dateNowSpy = jest
+        .spyOn(Date, 'now')
+        .mockReturnValueOnce(200)
+        .mockReturnValueOnce(225);
+
+      (service as unknown as { pool: { query: typeof queryMock } }).pool.query =
+        queryMock;
+      (
+        service as unknown as { logger: { error: typeof loggerErrorMock } }
+      ).logger.error = loggerErrorMock;
+
+      await expect(service.getHealthStatus()).resolves.toEqual({
+        healthy: false,
+        latencyMs: 25,
+        error: 'database unavailable',
+      });
+      expect(loggerErrorMock).toHaveBeenCalledWith(
+        'Database health check failed',
+        error,
+      );
+
+      dateNowSpy.mockRestore();
+    });
+  });
+
+  describe('healthCheck', () => {
+    it('should delegate to getHealthStatus and return the healthy flag', async () => {
+      jest.spyOn(service, 'getHealthStatus').mockResolvedValue({
+        healthy: false,
+        latencyMs: 7,
+        error: 'database unavailable',
+      });
+
+      await expect(service.healthCheck()).resolves.toBe(false);
+      expect(service.getHealthStatus).toHaveBeenCalledTimes(1);
+    });
+  });
 });

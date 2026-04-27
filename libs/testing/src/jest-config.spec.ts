@@ -18,9 +18,7 @@ const rootTestRegex = new RegExp(packageJson.jest.testRegex);
 const rootIgnorePatterns = packageJson.jest.testPathIgnorePatterns.map(
   (pattern) => new RegExp(pattern),
 );
-const integrationTestRegex = new RegExp(
-  integrationConfig.testRegex as string,
-);
+const integrationTestRegex = new RegExp(integrationConfig.testRegex as string);
 const integrationRoots = (integrationConfig.roots ?? []).map((root) =>
   root.replace('<rootDir>/', ''),
 );

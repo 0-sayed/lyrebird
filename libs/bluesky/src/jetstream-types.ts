@@ -236,7 +236,7 @@ export type JetstreamConnectionStatus =
   | 'connected'
   | 'disconnected'
   | 'reconnecting'
-  | 'error';
+  | 'exhausted';
 
 /**
  * Options for configuring the Jetstream client
@@ -274,4 +274,6 @@ export interface JetstreamMetrics {
   reconnectAttempts: number;
   /** Timestamp of last successful message */
   lastMessageAt?: Date;
+  /** Timestamp when reconnect attempts were exhausted */
+  exhaustedAt?: Date;
 }

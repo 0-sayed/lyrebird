@@ -7,7 +7,7 @@ import {
   Inject,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Subject, Observable } from 'rxjs';
+import { BehaviorSubject, Subject, Observable } from 'rxjs';
 import WebSocket from 'ws';
 import {
   JetstreamEvent,
@@ -54,7 +54,8 @@ export class JetstreamClientService implements OnModuleInit, OnModuleDestroy {
 
   // Connection status
   private connectionStatus: JetstreamConnectionStatus = 'disconnected';
-  private readonly statusSubject = new Subject<JetstreamConnectionStatus>();
+  private readonly statusSubject =
+    new BehaviorSubject<JetstreamConnectionStatus>('disconnected');
   public readonly status$ = this.statusSubject.asObservable();
 
   // Post event stream
@@ -71,6 +72,7 @@ export class JetstreamClientService implements OnModuleInit, OnModuleDestroy {
 
   // Max reconnect exhausted flag - for graceful degradation
   private maxReconnectExhausted = false;
+  private exhaustedAt: Date | null = null;
 
   // Constants
   private static readonly POST_COLLECTION = 'app.bsky.feed.post';
@@ -152,6 +154,12 @@ export class JetstreamClientService implements OnModuleInit, OnModuleDestroy {
    * @param cursor Optional cursor to resume from (Unix microseconds)
    */
   async connect(cursor?: string): Promise<void> {
+    if (this.maxReconnectExhausted) {
+      throw new Error(
+        'Reconnect attempts exhausted. Reset reconnect state before connecting again.',
+      );
+    }
+
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.logger.warn('Already connected to Jetstream');
       return;
@@ -174,8 +182,13 @@ export class JetstreamClientService implements OnModuleInit, OnModuleDestroy {
       this.logger.error(
         `Failed to connect to Jetstream: ${error instanceof Error ? error.message : String(error)}`,
       );
-      this.setConnectionStatus('error');
-      this.scheduleReconnect();
+      if (
+        !this.isShuttingDown &&
+        !this.maxReconnectExhausted &&
+        this.connectionStatus !== 'reconnecting'
+      ) {
+        this.scheduleReconnect();
+      }
     }
   }
 
@@ -244,6 +257,8 @@ export class JetstreamClientService implements OnModuleInit, OnModuleDestroy {
    * Handle WebSocket open event
    */
   private handleOpen(): void {
+    this.maxReconnectExhausted = false;
+    this.exhaustedAt = null;
     this.setConnectionStatus('connected');
     this.reconnectAttempts = 0;
     this.logger.log('Connected to Jetstream');
@@ -326,12 +341,19 @@ export class JetstreamClientService implements OnModuleInit, OnModuleDestroy {
     this.logger.warn(
       `Jetstream connection closed: code=${code}, reason=${reason}`,
     );
-    this.setConnectionStatus('disconnected');
     this.ws = null;
 
     if (!this.isShuttingDown) {
-      this.scheduleReconnect();
+      if (
+        this.connectionStatus !== 'reconnecting' &&
+        this.connectionStatus !== 'exhausted'
+      ) {
+        this.scheduleReconnect();
+      }
+      return;
     }
+
+    this.setConnectionStatus('disconnected');
   }
 
   /**
@@ -339,7 +361,11 @@ export class JetstreamClientService implements OnModuleInit, OnModuleDestroy {
    */
   private handleError(error: Error): void {
     this.logger.error(`Jetstream WebSocket error: ${error.message}`);
-    this.setConnectionStatus('error');
+
+    if (!this.isShuttingDown && !this.maxReconnectExhausted) {
+      this.ws = null;
+      this.scheduleReconnect();
+    }
   }
 
   /**
@@ -356,7 +382,8 @@ export class JetstreamClientService implements OnModuleInit, OnModuleDestroy {
         `Max reconnection attempts (${this.options.maxReconnectAttempts}) reached. Giving up.`,
       );
       this.maxReconnectExhausted = true;
-      this.setConnectionStatus('error');
+      this.exhaustedAt = new Date();
+      this.setConnectionStatus('exhausted');
       return;
     }
 
@@ -476,6 +503,7 @@ export class JetstreamClientService implements OnModuleInit, OnModuleDestroy {
       lastCursor: this.lastCursor ?? undefined,
       reconnectAttempts: this.reconnectAttempts,
       lastMessageAt: this.lastMessageAt ?? undefined,
+      exhaustedAt: this.exhaustedAt ?? undefined,
     };
   }
 
@@ -523,6 +551,8 @@ export class JetstreamClientService implements OnModuleInit, OnModuleDestroy {
   resetReconnectState(): void {
     this.maxReconnectExhausted = false;
     this.reconnectAttempts = 0;
+    this.exhaustedAt = null;
+    this.setConnectionStatus('disconnected');
   }
 
   /**

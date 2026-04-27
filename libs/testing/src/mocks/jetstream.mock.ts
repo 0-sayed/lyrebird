@@ -1,4 +1,4 @@
-import { Subject } from 'rxjs';
+import { BehaviorSubject, Subject } from 'rxjs';
 import type {
   JetstreamPostEvent,
   JetstreamConnectionStatus,
@@ -9,7 +9,17 @@ import type {
  */
 export const createMockJetstreamClientService = () => {
   const postsSubject = new Subject<JetstreamPostEvent>();
-  const statusSubject = new Subject<JetstreamConnectionStatus>();
+  const statusSubject = new BehaviorSubject<JetstreamConnectionStatus>(
+    'disconnected',
+  );
+  let connectionStatus: JetstreamConnectionStatus = 'disconnected';
+  let exhaustedAt: Date | undefined;
+
+  const setStatus = (status: JetstreamConnectionStatus) => {
+    connectionStatus = status;
+    exhaustedAt = status === 'exhausted' ? new Date() : undefined;
+    statusSubject.next(status);
+  };
 
   return {
     posts$: postsSubject.asObservable(),
@@ -17,26 +27,25 @@ export const createMockJetstreamClientService = () => {
     connect: jest.fn().mockResolvedValue(undefined),
     disconnect: jest.fn().mockResolvedValue(undefined),
     isConnected: jest.fn().mockReturnValue(false),
-    getConnectionStatus: jest
-      .fn()
-      .mockReturnValue('disconnected' as JetstreamConnectionStatus),
-    getMetrics: jest.fn().mockReturnValue({
+    getConnectionStatus: jest.fn(() => connectionStatus),
+    getMetrics: jest.fn(() => ({
       messagesReceived: 0,
       messagesPerSecond: 0,
       postsProcessed: 0,
-      connectionStatus: 'disconnected',
+      connectionStatus,
       reconnectAttempts: 0,
-    }),
+      exhaustedAt,
+    })),
     getLastCursor: jest.fn().mockReturnValue(null),
     setLastCursor: jest.fn(),
+    resetReconnectState: jest.fn(() => setStatus('disconnected')),
     resetMetrics: jest.fn(),
     // Expose subjects for test control
     _postsSubject: postsSubject,
     _statusSubject: statusSubject,
     // Helper to emit a post in tests
     _emitPost: (post: JetstreamPostEvent) => postsSubject.next(post),
-    _emitStatus: (status: JetstreamConnectionStatus) =>
-      statusSubject.next(status),
+    _emitStatus: (status: JetstreamConnectionStatus) => setStatus(status),
   };
 };
 
@@ -92,6 +101,7 @@ export const createMockJetstreamManagerService = () => ({
       postsProcessed: 0,
       connectionStatus: 'disconnected',
       reconnectAttempts: 0,
+      exhaustedAt: undefined,
     },
   }),
   getStats: jest.fn().mockReturnValue({
