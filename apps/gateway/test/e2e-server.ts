@@ -22,7 +22,7 @@ declare module 'express' {
 }
 
 import { NestFactory } from '@nestjs/core';
-import { Module, ValidationPipe, Logger } from '@nestjs/common';
+import { Global, Module, ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
@@ -43,7 +43,11 @@ import { JobRepositoryStub } from './stubs/job-repository.stub';
 import { SentimentDataRepositoryStub } from './stubs/sentiment-data-repository.stub';
 
 // Real types for provider tokens
-import { JobsRepository, SentimentDataRepository } from '@app/database';
+import {
+  DatabaseService,
+  JobsRepository,
+  SentimentDataRepository,
+} from '@app/database';
 import { RabbitmqService } from '@app/rabbitmq';
 import { LoggerModule } from '@app/logger';
 
@@ -67,10 +71,36 @@ class RabbitmqServiceMock {
     return Promise.resolve(true);
   }
 
+  getHealthStatus() {
+    return Promise.resolve({
+      healthy: true,
+      connected: true,
+      initializedQueues: [],
+    });
+  }
+
   isInitialized(): boolean {
     return true;
   }
 }
+
+@Global()
+@Module({
+  providers: [
+    {
+      provide: RabbitmqService,
+      useClass: RabbitmqServiceMock,
+    },
+    {
+      provide: DatabaseService,
+      useValue: {
+        getHealthStatus: () => Promise.resolve({ healthy: true, latencyMs: 0 }),
+      },
+    },
+  ],
+  exports: [RabbitmqService, DatabaseService],
+})
+class E2EHealthDependenciesModule {}
 
 /**
  * E2E Test Module
@@ -87,6 +117,7 @@ class RabbitmqServiceMock {
       ignoreErrors: false,
     }),
     LoggerModule,
+    E2EHealthDependenciesModule,
     HealthModule,
   ],
   controllers: [
@@ -106,11 +137,6 @@ class RabbitmqServiceMock {
     {
       provide: SentimentDataRepository,
       useClass: SentimentDataRepositoryStub,
-    },
-    // Mock RabbitMQ service
-    {
-      provide: RabbitmqService,
-      useClass: RabbitmqServiceMock,
     },
     // Global filters and interceptors
     {

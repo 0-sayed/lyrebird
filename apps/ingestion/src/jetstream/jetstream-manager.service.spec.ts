@@ -1,12 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { Logger } from '@nestjs/common';
 import { JetstreamManagerService } from './jetstream-manager.service';
 import { JobRegistryService, RegisterJobConfig } from './job-registry.service';
 import { KeywordFilterService } from './keyword-filter.service';
 import { JetstreamClientService } from '@app/bluesky';
+import { RabbitmqService, RABBITMQ_CONSTANTS } from '@app/rabbitmq';
 import {
   createMockJetstreamClientService,
   createMockJobRegistryService,
   createMockKeywordFilterService,
+  createMockRabbitmqService,
   JetstreamFactory,
 } from '@app/testing';
 
@@ -15,6 +18,15 @@ describe('JetstreamManagerService', () => {
   let jetstreamClient: ReturnType<typeof createMockJetstreamClientService>;
   let jobRegistry: ReturnType<typeof createMockJobRegistryService>;
   let keywordFilter: ReturnType<typeof createMockKeywordFilterService>;
+  let rabbitmqService: ReturnType<typeof createMockRabbitmqService>;
+
+  const runLogMetrics = (manager: JetstreamManagerService): Promise<void> => {
+    const managerWithLogMetrics = manager as unknown as {
+      logMetrics(): Promise<void>;
+    };
+
+    return managerWithLogMetrics.logMetrics();
+  };
 
   /** Helper to create base job config */
   const createJobConfig = (
@@ -47,6 +59,7 @@ describe('JetstreamManagerService', () => {
     jetstreamClient = createMockJetstreamClientService();
     jobRegistry = createMockJobRegistryService();
     keywordFilter = createMockKeywordFilterService();
+    rabbitmqService = createMockRabbitmqService();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -54,6 +67,7 @@ describe('JetstreamManagerService', () => {
         { provide: JetstreamClientService, useValue: jetstreamClient },
         { provide: JobRegistryService, useValue: jobRegistry },
         { provide: KeywordFilterService, useValue: keywordFilter },
+        { provide: RabbitmqService, useValue: rabbitmqService },
       ],
     }).compile();
 
@@ -316,6 +330,7 @@ describe('JetstreamManagerService', () => {
         postsProcessed: 80,
         connectionStatus: 'connected',
         reconnectAttempts: 0,
+        exhaustedAt: undefined,
       });
 
       const status = service.getStatus();
@@ -436,6 +451,7 @@ describe('JetstreamManagerService', () => {
 
       // Disconnect should be called, then connect
       expect(jetstreamClient.disconnect).toHaveBeenCalled();
+      expect(jetstreamClient.resetReconnectState).toHaveBeenCalled();
       expect(jetstreamClient.connect).toHaveBeenCalledTimes(2); // Initial + reconnect
     });
 
@@ -476,6 +492,95 @@ describe('JetstreamManagerService', () => {
     });
   });
 
+  describe('logMetrics backpressure monitoring', () => {
+    it('should log a warning when the analysis queue is backpressured', async () => {
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+
+      rabbitmqService.getBackpressureStatus.mockResolvedValueOnce({
+        queue: RABBITMQ_CONSTANTS.QUEUES.ANALYSIS,
+        messageCount: 125,
+        consumerCount: 1,
+        threshold: 100,
+        isBackpressured: true,
+      });
+
+      await runLogMetrics(service);
+
+      expect(rabbitmqService.getBackpressureStatus).toHaveBeenCalledWith(
+        RABBITMQ_CONSTANTS.QUEUES.ANALYSIS,
+        100,
+      );
+      expect(warnSpy).toHaveBeenCalledWith(
+        `[Backpressure] queue=${RABBITMQ_CONSTANTS.QUEUES.ANALYSIS} messages=125 threshold=100`,
+      );
+
+      warnSpy.mockRestore();
+    });
+
+    it('should not log a backpressure warning when queue depth is unavailable', async () => {
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+
+      rabbitmqService.getBackpressureStatus.mockResolvedValueOnce({
+        queue: RABBITMQ_CONSTANTS.QUEUES.ANALYSIS,
+        messageCount: -1,
+        consumerCount: 0,
+        threshold: 100,
+        isBackpressured: false,
+      });
+
+      await runLogMetrics(service);
+
+      expect(warnSpy).not.toHaveBeenCalled();
+
+      warnSpy.mockRestore();
+    });
+
+    it('should catch backpressure check failures without crashing metrics logging', async () => {
+      const logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation();
+      const errorSpy = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation();
+
+      rabbitmqService.getBackpressureStatus.mockRejectedValueOnce(
+        new Error('monitor unavailable'),
+      );
+
+      await expect(runLogMetrics(service)).resolves.toBeUndefined();
+
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('[Metrics]'));
+      expect(errorSpy).toHaveBeenCalledWith(
+        'Failed to check RabbitMQ backpressure during metrics polling',
+        expect.stringContaining('Error: monitor unavailable'),
+      );
+
+      logSpy.mockRestore();
+      errorSpy.mockRestore();
+    });
+
+    it.each(['0', '-1', 'not-a-number'])(
+      'should fall back to the default threshold for invalid value %s',
+      async (rawThreshold) => {
+        const previousThreshold = process.env.RABBITMQ_BACKPRESSURE_THRESHOLD;
+        process.env.RABBITMQ_BACKPRESSURE_THRESHOLD = rawThreshold;
+
+        try {
+          await runLogMetrics(service);
+
+          expect(rabbitmqService.getBackpressureStatus).toHaveBeenCalledWith(
+            RABBITMQ_CONSTANTS.QUEUES.ANALYSIS,
+            100,
+          );
+        } finally {
+          if (previousThreshold === undefined) {
+            delete process.env.RABBITMQ_BACKPRESSURE_THRESHOLD;
+          } else {
+            process.env.RABBITMQ_BACKPRESSURE_THRESHOLD = previousThreshold;
+          }
+        }
+      },
+    );
+  });
+
   describe('stopListening', () => {
     it('should clean up subscriptions and disconnect', async () => {
       await service.registerJob(createJobConfig());
@@ -507,7 +612,7 @@ describe('JetstreamManagerService', () => {
       ['connecting', 'connecting'],
       ['connected', 'connected'],
       ['disconnected', 'disconnected'],
-      ['error', 'error'],
+      ['exhausted', 'exhausted'],
       ['reconnecting', 'reconnecting'],
     ] as const)(
       'should subscribe to %s status changes without throwing',
@@ -517,10 +622,10 @@ describe('JetstreamManagerService', () => {
       },
     );
 
-    it('should access active job count on error status', () => {
+    it('should access active job count on exhausted status', () => {
       jobRegistry.getActiveJobCount.mockReturnValue(3);
 
-      jetstreamClient._emitStatus('error');
+      jetstreamClient._emitStatus('exhausted');
 
       expect(jobRegistry.getActiveJobCount).toHaveBeenCalled();
     });
@@ -532,6 +637,7 @@ describe('JetstreamManagerService', () => {
         postsProcessed: 0,
         connectionStatus: 'reconnecting',
         reconnectAttempts: 3,
+        exhaustedAt: undefined,
       });
 
       jetstreamClient._emitStatus('reconnecting');

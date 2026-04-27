@@ -104,6 +104,18 @@ describe('AnalysisController (e2e)', () => {
   });
 
   it('/health/ready (GET) - should return ready when dependencies are healthy', () => {
+    const rabbitmqHealth = {
+      healthy: true,
+      connected: true,
+      initializedQueues: ['analysis'],
+    };
+    const databaseHealth = {
+      healthy: true,
+      latencyMs: 1,
+    };
+    mockRabbitmqService.getHealthStatus.mockResolvedValue(rabbitmqHealth);
+    mockDatabaseService.getHealthStatus.mockResolvedValue(databaseHealth);
+
     return request(app.getHttpServer() as App)
       .get('/health/ready')
       .expect(200)
@@ -111,11 +123,75 @@ describe('AnalysisController (e2e)', () => {
         expect(res.body).toHaveProperty('status', 'ready');
 
         expect(res.body).toHaveProperty('checks');
-        expect(res.body.checks).toHaveProperty('rabbitmq', 'connected');
-        expect(res.body.checks).toHaveProperty('database', 'connected');
+        expect(res.body.checks).toHaveProperty('rabbitmq');
+        expect(res.body.checks.rabbitmq).toMatchObject(rabbitmqHealth);
+        expect(res.body.checks).toHaveProperty('database');
+        expect(res.body.checks.database).toMatchObject(databaseHealth);
         expect(res.body.checks).toHaveProperty('bert');
         expect(res.body.checks.bert).toHaveProperty('ready', true);
         expect(res.body.checks.bert).toHaveProperty('provider', 'local-onnx');
+        expect(mockRabbitmqService.getHealthStatus).toHaveBeenCalledTimes(1);
+        expect(mockRabbitmqService.isInitialized).not.toHaveBeenCalled();
+      });
+  });
+
+  it('/health/ready (GET) - should return 503 when RabbitMQ is unhealthy', () => {
+    const rabbitmqHealth = {
+      healthy: false,
+      connected: false,
+      initializedQueues: [],
+      lastError: 'broker unavailable',
+    };
+    const databaseHealth = {
+      healthy: true,
+      latencyMs: 1,
+    };
+    mockRabbitmqService.getHealthStatus.mockResolvedValue(rabbitmqHealth);
+    mockDatabaseService.getHealthStatus.mockResolvedValue(databaseHealth);
+
+    return request(app.getHttpServer() as App)
+      .get('/health/ready')
+      .expect(503)
+      .expect((res) => {
+        expect(res.body).toMatchObject({
+          status: 'not_ready',
+          service: 'analysis',
+          checks: {
+            rabbitmq: rabbitmqHealth,
+            database: databaseHealth,
+          },
+        });
+        expect(res.body.checks).toHaveProperty('bert');
+      });
+  });
+
+  it('/health/ready (GET) - should return 503 when Postgres is unhealthy', () => {
+    const rabbitmqHealth = {
+      healthy: true,
+      connected: true,
+      initializedQueues: ['analysis'],
+    };
+    const databaseHealth = {
+      healthy: false,
+      latencyMs: 5,
+      error: 'db unavailable',
+    };
+    mockRabbitmqService.getHealthStatus.mockResolvedValue(rabbitmqHealth);
+    mockDatabaseService.getHealthStatus.mockResolvedValue(databaseHealth);
+
+    return request(app.getHttpServer() as App)
+      .get('/health/ready')
+      .expect(503)
+      .expect((res) => {
+        expect(res.body).toMatchObject({
+          status: 'not_ready',
+          service: 'analysis',
+          checks: {
+            rabbitmq: rabbitmqHealth,
+            database: databaseHealth,
+          },
+        });
+        expect(res.body.checks).toHaveProperty('bert');
       });
   });
 });

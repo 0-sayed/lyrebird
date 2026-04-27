@@ -90,6 +90,247 @@ describe('IngestionController (e2e)', () => {
         expect(res.body).toHaveProperty('service', 'ingestion');
       });
   });
+
+  describe('/health/ready (GET)', () => {
+    beforeEach(() => {
+      mockJetstreamManager.getStatus.mockReturnValue({
+        isListening: true,
+        connectionStatus: 'connected',
+        activeJobCount: 1,
+        metrics: {
+          messagesReceived: 0,
+          messagesPerSecond: 0,
+          postsProcessed: 0,
+          connectionStatus: 'connected',
+          reconnectAttempts: 0,
+          exhaustedAt: undefined,
+        },
+      });
+      mockRabbitmqService.getHealthStatus.mockResolvedValue({
+        healthy: true,
+        connected: true,
+        initializedQueues: [],
+      });
+      mockDatabaseService.getHealthStatus.mockResolvedValue({
+        healthy: true,
+        latencyMs: 0,
+      });
+    });
+
+    it('returns the readiness success shape when dependencies are healthy', async () => {
+      await request(app.getHttpServer() as App)
+        .get('/health/ready')
+        .expect(200)
+        .expect((res) => {
+          expect(res.body).toEqual(
+            expect.objectContaining({
+              status: 'ready',
+              service: 'ingestion',
+              checks: {
+                jetstream: { status: 'connected' },
+                rabbitmq: {
+                  healthy: true,
+                  connected: true,
+                  initializedQueues: [],
+                },
+                database: {
+                  healthy: true,
+                  latencyMs: 0,
+                },
+              },
+            }),
+          );
+        });
+    });
+
+    it('returns ready when Jetstream is idle with no active jobs', async () => {
+      mockJetstreamManager.getStatus.mockReturnValueOnce({
+        isListening: false,
+        connectionStatus: 'disconnected',
+        activeJobCount: 0,
+        metrics: {
+          messagesReceived: 0,
+          messagesPerSecond: 0,
+          postsProcessed: 0,
+          connectionStatus: 'disconnected',
+          reconnectAttempts: 0,
+          exhaustedAt: undefined,
+        },
+      });
+
+      await request(app.getHttpServer() as App)
+        .get('/health/ready')
+        .expect(200)
+        .expect((res) => {
+          expect(res.body).toEqual(
+            expect.objectContaining({
+              status: 'ready',
+              service: 'ingestion',
+              checks: {
+                jetstream: { status: 'disconnected' },
+                rabbitmq: {
+                  healthy: true,
+                  connected: true,
+                  initializedQueues: [],
+                },
+                database: {
+                  healthy: true,
+                  latencyMs: 0,
+                },
+              },
+            }),
+          );
+        });
+    });
+
+    it('returns 503 when RabbitMQ is unhealthy', async () => {
+      mockRabbitmqService.getHealthStatus.mockResolvedValueOnce({
+        healthy: false,
+        connected: false,
+        initializedQueues: [],
+      });
+
+      await request(app.getHttpServer() as App)
+        .get('/health/ready')
+        .expect(503)
+        .expect((res) => {
+          expect(res.body).toEqual(
+            expect.objectContaining({
+              status: 'not_ready',
+              service: 'ingestion',
+              checks: {
+                jetstream: { status: 'connected' },
+                rabbitmq: {
+                  healthy: false,
+                  connected: false,
+                  initializedQueues: [],
+                },
+                database: {
+                  healthy: true,
+                  latencyMs: 0,
+                },
+              },
+            }),
+          );
+        });
+    });
+
+    it('returns 503 when Postgres is unhealthy', async () => {
+      mockDatabaseService.getHealthStatus.mockResolvedValueOnce({
+        healthy: false,
+        latencyMs: 3,
+        error: 'connection refused',
+      });
+
+      await request(app.getHttpServer() as App)
+        .get('/health/ready')
+        .expect(503)
+        .expect((res) => {
+          expect(res.body).toEqual(
+            expect.objectContaining({
+              status: 'not_ready',
+              service: 'ingestion',
+              checks: {
+                jetstream: { status: 'connected' },
+                rabbitmq: {
+                  healthy: true,
+                  connected: true,
+                  initializedQueues: [],
+                },
+                database: {
+                  healthy: false,
+                  latencyMs: 3,
+                  error: 'connection refused',
+                },
+              },
+            }),
+          );
+        });
+    });
+
+    it('returns 503 when Jetstream is exhausted', async () => {
+      mockJetstreamManager.getStatus.mockReturnValueOnce({
+        isListening: false,
+        connectionStatus: 'exhausted',
+        activeJobCount: 0,
+        metrics: {
+          messagesReceived: 0,
+          messagesPerSecond: 0,
+          postsProcessed: 0,
+          connectionStatus: 'exhausted',
+          reconnectAttempts: 0,
+          exhaustedAt: new Date().toISOString(),
+        },
+      });
+
+      await request(app.getHttpServer() as App)
+        .get('/health/ready')
+        .expect(503)
+        .expect((res) => {
+          expect(res.body).toEqual(
+            expect.objectContaining({
+              status: 'not_ready',
+              service: 'ingestion',
+              checks: {
+                jetstream: { status: 'exhausted' },
+                rabbitmq: {
+                  healthy: true,
+                  connected: true,
+                  initializedQueues: [],
+                },
+                database: {
+                  healthy: true,
+                  latencyMs: 0,
+                },
+              },
+            }),
+          );
+        });
+    });
+
+    it.each(['connecting', 'reconnecting'] as const)(
+      'returns 503 when Jetstream is %s',
+      async (connectionStatus) => {
+        mockJetstreamManager.getStatus.mockReturnValueOnce({
+          isListening: false,
+          connectionStatus,
+          activeJobCount: 0,
+          metrics: {
+            messagesReceived: 0,
+            messagesPerSecond: 0,
+            postsProcessed: 0,
+            connectionStatus,
+            reconnectAttempts: 1,
+            exhaustedAt: undefined,
+          },
+        });
+
+        await request(app.getHttpServer() as App)
+          .get('/health/ready')
+          .expect(503)
+          .expect((res) => {
+            expect(res.body).toEqual(
+              expect.objectContaining({
+                status: 'not_ready',
+                service: 'ingestion',
+                checks: {
+                  jetstream: { status: connectionStatus },
+                  rabbitmq: {
+                    healthy: true,
+                    connected: true,
+                    initializedQueues: [],
+                  },
+                  database: {
+                    healthy: true,
+                    latencyMs: 0,
+                  },
+                },
+              }),
+            );
+          });
+      },
+    );
+  });
 });
 
 describe('IngestionService E2E', () => {
