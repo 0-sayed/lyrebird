@@ -416,6 +416,36 @@ describe('PostsSidebar', () => {
       ).toBeInTheDocument();
     });
 
+    it('shows more posts when the selected post is beyond the stored visible count', async () => {
+      const user = userEvent.setup();
+      const posts = Array.from({ length: 60 }, (_, index) =>
+        createExplorerPost(index, {
+          textContent: `Selected pagination post ${index}`,
+          publishedAt: '2026-01-01T00:00:00.000Z',
+        }),
+      );
+
+      render(
+        <PostsSidebar
+          {...defaultProps}
+          posts={posts}
+          selectedPostId="explorer-50"
+        />,
+      );
+
+      expect(getPostCards()).toHaveLength(51);
+      expect(
+        screen.getByText('Showing 51 of 60 matching posts'),
+      ).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Show more' }));
+
+      expect(getPostCards()).toHaveLength(60);
+      expect(
+        screen.getByText('Showing 60 of 60 matching posts'),
+      ).toBeInTheDocument();
+    });
+
     it('shows an empty state when no posts match filters', async () => {
       const user = userEvent.setup();
       const posts = [

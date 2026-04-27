@@ -277,7 +277,8 @@ export function PostsSidebar({
                     updateExplorerState((state) => ({
                       ...state,
                       visibleCount:
-                        state.visibleCount + VISIBLE_COUNT_INCREMENT,
+                        Math.max(state.visibleCount, selectedPostIndex + 1) +
+                        VISIBLE_COUNT_INCREMENT,
                     }));
                   }}
                 >
